@@ -3480,9 +3480,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
              */
             int mapped(int offset);
 
-            /**
-             * An argument handler for an enter advice method.
-             */
             @EqualsAndHashCode
             class ForMethodEnter implements ForAdvice {
 
@@ -3547,27 +3544,27 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
              * An argument handler for an exit advice method.
              */
             @EqualsAndHashCode
-            abstract class ForMethodExit implements ForAdvice {
+            class ForMethodExit implements ForAdvice {
 
                 /**
                  * The instrumented method.
                  */
-                protected final MethodDescription instrumentedMethod;
+                private final MethodDescription instrumentedMethod;
 
                 /**
                  * The advice method.
                  */
-                protected final MethodDescription adviceMethod;
+                private final MethodDescription adviceMethod;
 
                 /**
                  * The enter type or {@code void} if no enter type is defined.
                  */
-                protected final TypeDefinition enterType;
+                private final TypeDefinition enterType;
 
                 /**
                  * The stack size of a possibly stored throwable.
                  */
-                protected final StackSize throwableSize;
+                private final StackSize throwableSize;
 
                 /**
                  * Creates a new argument handler for an exit advice.
@@ -3585,6 +3582,11 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 }
 
                 @Override
+                public int argument(int offset) {
+                    return offset;
+                }
+
+                @Override
                 public int enter() {
                     if (enterType.represents(void.class)) {
                         throw new IllegalStateException("Enter type is not defined for advice on " + instrumentedMethod);
@@ -3592,107 +3594,29 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                     return instrumentedMethod.getStackSize();
                 }
 
-                /**
-                 * A standard implementation of an argument handler for an exit advice.
-                 */
-                protected static class Simple extends ForMethodExit {
-
-                    /**
-                     * Creates a new simple argument handler for an exit advice.
-                     *
-                     * @param instrumentedMethod The instrumented method.
-                     * @param adviceMethod       The advice method.
-                     * @param enterType          The enter type or {@code void} if no enter type is defined.
-                     * @param throwableSize      The stack size of a possibly stored throwable.
-                     */
-                    protected Simple(MethodDescription instrumentedMethod, MethodDescription adviceMethod, TypeDefinition enterType, StackSize throwableSize) {
-                        super(instrumentedMethod, adviceMethod, enterType, throwableSize);
+                @Override
+                public int returned() {
+                    if (instrumentedMethod.getReturnType().represents(void.class)) {
+                        throw new IllegalStateException("Return type is not defined for advice on " + instrumentedMethod);
                     }
-
-                    @Override
-                    public int argument(int offset) {
-                        return offset < instrumentedMethod.getStackSize()
-                                ? offset
-                                : offset + enterType.getStackSize().getSize() + instrumentedMethod.getReturnType().getStackSize().getSize() + throwableSize.getSize();
-                    }
-
-                    @Override
-                    public int returned() {
-                        if (instrumentedMethod.getReturnType().represents(void.class)) {
-                            throw new IllegalStateException("Return type is void for " + instrumentedMethod);
-                        }
-                        return enterType.getStackSize().getSize() + instrumentedMethod.getStackSize();
-                    }
-
-                    @Override
-                    public int thrown() {
-                        if (throwableSize == StackSize.ZERO) {
-                            throw new IllegalStateException("Throwable is not captured for " + instrumentedMethod);
-                        }
-                        return instrumentedMethod.getStackSize() + enterType.getStackSize().getSize() + instrumentedMethod.getReturnType().getStackSize().getSize();
-                    }
-
-                    @Override
-                    public int mapped(int offset) {
-                        return instrumentedMethod.getStackSize()
-                                - adviceMethod.getStackSize()
-                                + enterType.getStackSize().getSize()
-                                + instrumentedMethod.getReturnType().getStackSize().getSize()
-                                + throwableSize.getSize()
-                                + offset;
-                    }
+                    return instrumentedMethod.getStackSize() + enterType.getStackSize().getSize();
                 }
 
-                /**
-                 * An argument handler that copies all arguments after completing the enter advice such that no reassignments during the
-                 * executing of the instrumented method take effect.
-                 */
-                protected static class WithCopiedArguments extends ForMethodExit {
-
-                    /**
-                     * Creates an argument-copying argument handler for an exit advice.
-                     *
-                     * @param instrumentedMethod The instrumented method.
-                     * @param adviceMethod       The advice method.
-                     * @param enterType          The enter type or {@code void} if no enter type is defined.
-                     * @param throwableSize      The stack size of a possibly stored throwable.
-                     */
-                    protected WithCopiedArguments(MethodDescription instrumentedMethod, MethodDescription adviceMethod, TypeDefinition enterType, StackSize throwableSize) {
-                        super(instrumentedMethod, adviceMethod, enterType, throwableSize);
+                @Override
+                public int thrown() {
+                    if (throwableSize == StackSize.ZERO) {
+                        throw new IllegalStateException("Exception is not captured for advice on " + instrumentedMethod);
                     }
+                    return instrumentedMethod.getStackSize() + enterType.getStackSize().getSize() + instrumentedMethod.getReturnType().getStackSize().getSize();
+                }
 
-                    @Override
-                    public int argument(int offset) {
-                        return instrumentedMethod.getStackSize() + (offset < instrumentedMethod.getStackSize()
-                                ? offset
-                                : offset + enterType.getStackSize().getSize() + instrumentedMethod.getReturnType().getStackSize().getSize() + throwableSize.getSize());
-                    }
-
-                    @Override
-                    public int returned() {
-                        if (instrumentedMethod.getReturnType().represents(void.class)) {
-                            throw new IllegalStateException("Return type is void for " + instrumentedMethod);
-                        }
-                        return instrumentedMethod.getStackSize() * 2 + enterType.getStackSize().getSize();
-                    }
-
-                    @Override
-                    public int thrown() {
-                        if (throwableSize == StackSize.ZERO) {
-                            throw new IllegalStateException("Throwable is not captured for " + instrumentedMethod);
-                        }
-                        return instrumentedMethod.getStackSize() * 2 + enterType.getStackSize().getSize() + instrumentedMethod.getReturnType().getStackSize().getSize();
-                    }
-
-                    @Override
-                    public int mapped(int offset) {
-                        return instrumentedMethod.getStackSize() * 2
-                                - adviceMethod.getStackSize()
-                                + enterType.getStackSize().getSize()
-                                + instrumentedMethod.getReturnType().getStackSize().getSize()
-                                + throwableSize.getSize()
-                                + offset;
-                    }
+                @Override
+                public int mapped(int offset) {
+                    return instrumentedMethod.getStackSize() - adviceMethod.getStackSize()
+                            + enterType.getStackSize().getSize()
+                            + instrumentedMethod.getReturnType().getStackSize().getSize()
+                            + throwableSize.getSize()
+                            + offset;
                 }
             }
         }
@@ -3807,7 +3731,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
                 @Override
                 public ForAdvice bindExit(MethodDescription adviceMethod, boolean skipThrowable) {
-                    return new ForAdvice.ForMethodExit.Simple(instrumentedMethod, adviceMethod, enterType, skipThrowable ? StackSize.ZERO : StackSize.SINGLE);
+                    return new ForAdvice.ForMethodExit(instrumentedMethod, adviceMethod, enterType, skipThrowable ? StackSize.ZERO : StackSize.SINGLE);
                 }
             }
 
@@ -3859,16 +3783,12 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
                 @Override
                 public int variable(int index) {
-                    return index < (instrumentedMethod.isStatic() ? 0 : 1) + instrumentedMethod.getParameters().size()
-                            ? index
-                            : index + (enterType.represents(void.class) ? 0 : 1) + (instrumentedMethod.isStatic() ? 0 : 1) + instrumentedMethod.getParameters().size();
+                    return instrumentedMethod.getParameters().size() + (enterType.represents(void.class) ? 0 : 1) + index;
                 }
 
                 @Override
                 public int argument(int offset) {
-                    return offset < instrumentedMethod.getStackSize()
-                            ? offset
-                            : offset + enterType.getStackSize().getSize() + instrumentedMethod.getStackSize();
+                    return instrumentedMethod.getStackSize() + enterType.getStackSize().getSize() + offset;
                 }
 
                 @Override
@@ -3878,12 +3798,12 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
                 @Override
                 public int returned() {
-                    return instrumentedMethod.getStackSize() * 2 + enterType.getStackSize().getSize();
+                    return instrumentedMethod.getStackSize() + enterType.getStackSize().getSize();
                 }
 
                 @Override
                 public int thrown() {
-                    return instrumentedMethod.getStackSize() * 2 + enterType.getStackSize().getSize() + instrumentedMethod.getReturnType().getStackSize().getSize();
+                    return instrumentedMethod.getStackSize() + enterType.getStackSize().getSize() + instrumentedMethod.getReturnType().getStackSize().getSize();
                 }
 
                 @Override
@@ -3900,7 +3820,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
                 @Override
                 public ForAdvice bindExit(MethodDescription adviceMethod, boolean skipThrowable) {
-                    return new ForAdvice.ForMethodExit.WithCopiedArguments(instrumentedMethod, adviceMethod, enterType, skipThrowable ? StackSize.ZERO : StackSize.SINGLE);
+                    return new ForAdvice.ForMethodExit(instrumentedMethod, adviceMethod, enterType, skipThrowable ? StackSize.ZERO : StackSize.SINGLE);
                 }
             }
         }
