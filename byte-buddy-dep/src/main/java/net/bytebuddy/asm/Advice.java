@@ -4472,9 +4472,9 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                 translated,
                                 index,
                                 translated.length - index);
+                        currentFrameDivergence = translated.length - index; // TODO: Is this correct?
                         localVariableLength = translated.length;
                         localVariable = translated;
-                        currentFrameDivergence = translated.length - index;
                         break;
                     default:
                         throw new IllegalArgumentException("Unexpected frame type: " + type);
@@ -4726,24 +4726,48 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
 
                 @Override
-                public void injectStartFrame(MethodVisitor methodVisitor) {
-                    Object[] localVariable = new Object[instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1)];
-                    int index = 0;
-                    if (instrumentedMethod.isConstructor()) {
-                        localVariable[index++] = instrumentedMethod.isConstructor()
-                                ? Opcodes.UNINITIALIZED_THIS
-                                : toFrame(instrumentedMethod.getDeclaringType().asErasure());
-                    } else if (!instrumentedMethod.isStatic()) {
-                        localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
-                    }
-                    for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
-                        localVariable[index++] = toFrame(typeDescription);
-                    }
-                    if (localVariable.length > 0) {
-                        if (!expandFrames && localVariable.length < 4) {
+                public void injectStartFrame(MethodVisitor methodVisitor) { // TODO: Simplify!
+                    if (instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1) > 0) {
+                        if (!expandFrames && instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1) < 4) {
+                            Object[] localVariable = new Object[instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1)];
+                            int index = 0;
+                            if (instrumentedMethod.isConstructor()) {
+                                localVariable[index++] = instrumentedMethod.isConstructor()
+                                        ? Opcodes.UNINITIALIZED_THIS
+                                        : toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                            } else if (!instrumentedMethod.isStatic()) {
+                                localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                            }
+                            for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
+                                localVariable[index++] = toFrame(typeDescription);
+                            }
                             methodVisitor.visitFrame(Opcodes.F_APPEND, localVariable.length, localVariable, 0, EMPTY);
                         } else {
-                            // TODO: Fix full frame layout
+                            Object[] localVariable = new Object[instrumentedMethod.getParameters().size() * 2 + (instrumentedMethod.isStatic() ? 0 : 2) + enterTypes.size()];
+                            int index = 0;
+                            if (instrumentedMethod.isConstructor()) {
+                                localVariable[index++] = instrumentedMethod.isConstructor()
+                                        ? Opcodes.UNINITIALIZED_THIS
+                                        : toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                            } else if (!instrumentedMethod.isStatic()) {
+                                localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                            }
+                            for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
+                                localVariable[index++] = toFrame(typeDescription);
+                            }
+                            if (instrumentedMethod.isConstructor()) {
+                                localVariable[index++] = instrumentedMethod.isConstructor()
+                                        ? Opcodes.UNINITIALIZED_THIS
+                                        : toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                            } else if (!instrumentedMethod.isStatic()) {
+                                localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                            }
+                            for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
+                                localVariable[index++] = toFrame(typeDescription);
+                            }
+                            for (TypeDescription typeDescription : enterTypes) {
+                                localVariable[index++] = toFrame(typeDescription);
+                            }
                             methodVisitor.visitFrame(expandFrames ? Opcodes.F_NEW : Opcodes.F_FULL, localVariable.length, localVariable, 0, EMPTY);
                         }
                     }
@@ -4790,9 +4814,9 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                     translated,
                                     index,
                                     localVariableLength);
+                            currentFrameDivergence = localVariableLength; // TODO: Correct?
                             localVariableLength = translated.length;
                             localVariable = translated;
-                            currentFrameDivergence = 0; // TODO: Correct?
                             break;
                         default:
                             throw new IllegalArgumentException("Unexpected frame type: " + type);
