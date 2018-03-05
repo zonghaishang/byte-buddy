@@ -3426,6 +3426,8 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
          */
         interface ForInstrumentedMethod extends ArgumentHandler {
 
+            boolean isCopyArguments();
+
             /**
              * Prepates this argument handler for future offset access.
              *
@@ -3433,13 +3435,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
              * @return The minimum stack size that is required to apply this manipulation.
              */
             int prepare(MethodVisitor methodVisitor);
-
-            /**
-             * A list of intermediate types that are stored in the local variable array after a potential enter advice was executed.
-             *
-             * @return A list of intermediate types.
-             */
-            List<TypeDescription> getIntermediateTypes();
 
             /**
              * Resolves a local variable index.
@@ -3645,7 +3640,9 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                     if (instrumentedMethod.isConstructor()) {
                         throw new IllegalStateException("Cannot apply argument copying on constructor " + instrumentedMethod);
                     }
-                    return new ArgumentHandler.Factory.Copying(instrumentedMethod, enterType);
+                    return instrumentedMethod.isStatic() && instrumentedMethod.getParameters().isEmpty()
+                            ? new ArgumentHandler.Factory.Simple(instrumentedMethod, enterType)
+                            : new ArgumentHandler.Factory.Copying(instrumentedMethod, enterType);
                 }
             };
 
@@ -3686,6 +3683,11 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 }
 
                 @Override
+                public boolean isCopyArguments() {
+                    return false;
+                }
+
+                @Override
                 public int prepare(MethodVisitor methodVisitor) {
                     return 0;
                 }
@@ -3717,11 +3719,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 @Override
                 public int thrown() {
                     return instrumentedMethod.getStackSize() + enterType.getStackSize().getSize() + instrumentedMethod.getReturnType().getStackSize().getSize();
-                }
-
-                @Override
-                public List<TypeDescription> getIntermediateTypes() {
-                    return Collections.emptyList();
                 }
 
                 @Override
@@ -3760,6 +3757,11 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 protected Copying(MethodDescription instrumentedMethod, TypeDefinition enterType) {
                     this.instrumentedMethod = instrumentedMethod;
                     this.enterType = enterType;
+                }
+
+                @Override
+                public boolean isCopyArguments() {
+                    return true;
                 }
 
                 @Override
@@ -3804,13 +3806,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 @Override
                 public int thrown() {
                     return instrumentedMethod.getStackSize() + enterType.getStackSize().getSize() + instrumentedMethod.getReturnType().getStackSize().getSize();
-                }
-
-                @Override
-                public List<TypeDescription> getIntermediateTypes() {
-                    return instrumentedMethod.isStatic()
-                            ? instrumentedMethod.getParameters().asTypeList().asErasures()
-                            : CompoundList.of(instrumentedMethod.getDeclaringType().asErasure(), instrumentedMethod.getParameters().asTypeList().asErasures());
                 }
 
                 @Override
@@ -3972,15 +3967,12 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
              */
             private final MethodDescription instrumentedMethod;
 
+            private final boolean copyArguments;
+
             /**
              * A list of virtual method arguments that are available before the instrumented method is executed.
              */
             private final List<? extends TypeDescription> enterTypes;
-
-            /**
-             * A list of virtual method arguments that are available are synthetically added the instrumented method is executed.
-             */
-            private final List<? extends TypeDescription> intermediateTypes;
 
             /**
              * A list of virtual method arguments that are available after the instrumented method has completed.
@@ -4002,16 +3994,15 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
              *
              * @param instrumentedMethod The instrumented method.
              * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
-             * @param intermediateTypes  A list of virtual method arguments that are available are synthetically added the instrumented method is executed.
              * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
              */
             protected Default(MethodDescription instrumentedMethod,
+                              boolean copyArguments,
                               List<? extends TypeDescription> enterTypes,
-                              List<? extends TypeDescription> intermediateTypes,
                               List<? extends TypeDescription> exitTypes) {
                 this.instrumentedMethod = instrumentedMethod;
+                this.copyArguments = copyArguments;
                 this.enterTypes = enterTypes;
-                this.intermediateTypes = intermediateTypes;
                 this.exitTypes = exitTypes;
             }
 
@@ -4020,19 +4011,18 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
              *
              * @param instrumentedMethod The instrumented method.
              * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
-             * @param intermediateTypes  A list of virtual method arguments that are available are synthetically added the instrumented method is executed.
              * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
              * @param writerFlags        The flags supplied to the ASM class writer.
              * @return An appropriate method size handler.
              */
             protected static MethodSizeHandler.ForInstrumentedMethod of(MethodDescription instrumentedMethod,
+                                                                        boolean copyArguments,
                                                                         List<? extends TypeDescription> enterTypes,
-                                                                        List<? extends TypeDescription> intermediateTypes,
                                                                         List<? extends TypeDescription> exitTypes,
                                                                         int writerFlags) {
                 return (writerFlags & (ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES)) != 0
                         ? NoOp.INSTANCE
-                        : new Default(instrumentedMethod, enterTypes, intermediateTypes, exitTypes);
+                        : new Default(instrumentedMethod, copyArguments, enterTypes, exitTypes);
             }
 
             @Override
@@ -4046,7 +4036,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 stackSize = Math.max(stackSize, adviceMethod.getReturnType().getStackSize().maximum(skipThrowable
                         ? StackSize.ZERO
                         : StackSize.SINGLE).getSize());
-                return new ForAdvice(adviceMethod, CompoundList.of(enterTypes, intermediateTypes, exitTypes), Collections.<TypeDescription>emptyList());
+                return new ForAdvice(adviceMethod, CompoundList.of(enterTypes, exitTypes), Collections.<TypeDescription>emptyList());
             }
 
             @Override
@@ -4058,18 +4048,17 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             public int compoundLocalVariableLength(int localVariableLength) {
                 return Math.max(this.localVariableLength, localVariableLength
                         + StackSize.of(enterTypes)
-                        + StackSize.of(intermediateTypes)
                         + StackSize.of(exitTypes));
             }
 
             @Override
             public void requireStackSize(int stackSize) {
-                Default.this.stackSize = Math.max(Default.this.stackSize, stackSize);
+                this.stackSize = Math.max(this.stackSize, stackSize);
             }
 
             @Override
             public void requireLocalVariableLength(int localVariableLength) {
-                this.localVariableLength = Math.max(this.localVariableLength, localVariableLength);
+                this.localVariableLength = Math.max(this.localVariableLength, localVariableLength + (copyArguments ? instrumentedMethod.getStackSize() : 0));
             }
 
             /**
@@ -4113,14 +4102,15 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                     stackSize = Math.max(stackSize, adviceMethod.getReturnType().getStackSize().getSize());
                 }
 
-                @Override
-                public void requireLocalVariableLength(int localVariableLength) {
-                    Default.this.requireLocalVariableLength(localVariableLength);
-                }
 
                 @Override
                 public void requireStackSize(int stackSize) {
-                    Default.this.requireStackSize(stackSize);
+                    Default.this.stackSize = Math.max(Default.this.stackSize, stackSize);
+                }
+
+                @Override
+                public void requireLocalVariableLength(int localVariableLength) {
+                    Default.this.localVariableLength = Math.max(Default.this.localVariableLength, localVariableLength);
                 }
 
                 @Override
@@ -4283,7 +4273,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
         /**
          * A default implementation of a stack map frame handler for an instrumented method.
          */
-        class Default implements ForInstrumentedMethod {
+        abstract class Default implements ForInstrumentedMethod {
 
             /**
              * An empty array indicating an empty frame.
@@ -4306,11 +4296,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             protected final List<? extends TypeDescription> enterTypes;
 
             /**
-             * A list of virtual method arguments that are available are synthetically added the instrumented method is executed.
-             */
-            protected final List<? extends TypeDescription> intermediateTypes;
-
-            /**
              * A list of virtual method arguments that are available after the instrumented method has completed.
              */
             protected final List<? extends TypeDescription> exitTypes;
@@ -4318,12 +4303,12 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             /**
              * {@code true} if the meta data handler is expected to expand its frames.
              */
-            private final boolean expandFrames;
+            protected final boolean expandFrames;
 
             /**
              * The current frame's size divergence from the original local variable array.
              */
-            private int currentFrameDivergence;
+            protected int currentFrameDivergence;
 
             /**
              * Creates a new default meta data handler.
@@ -4331,20 +4316,17 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
              * @param instrumentedType   The instrumented type.
              * @param instrumentedMethod The instrumented method.
              * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
-             * @param intermediateTypes  A list of virtual method arguments that are available are synthetically added the instrumented method is executed.
              * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
              * @param expandFrames       {@code true} if the meta data handler is expected to expand its frames.
              */
             protected Default(TypeDescription instrumentedType,
                               MethodDescription instrumentedMethod,
                               List<? extends TypeDescription> enterTypes,
-                              List<? extends TypeDescription> intermediateTypes,
                               List<? extends TypeDescription> exitTypes,
                               boolean expandFrames) {
                 this.instrumentedType = instrumentedType;
                 this.instrumentedMethod = instrumentedMethod;
                 this.enterTypes = enterTypes;
-                this.intermediateTypes = intermediateTypes;
                 this.exitTypes = exitTypes;
                 this.expandFrames = expandFrames;
             }
@@ -4355,7 +4337,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
              * @param instrumentedType   The instrumented type.
              * @param instrumentedMethod The instrumented method.
              * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
-             * @param intermediateTypes  A list of virtual method arguments that are available are synthetically added the instrumented method is executed.
              * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
              * @param classFileVersion   The instrumented type's class file version.
              * @param writerFlags        The flags supplied to the ASM writer.
@@ -4364,15 +4345,21 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
              */
             protected static ForInstrumentedMethod of(TypeDescription instrumentedType,
                                                       MethodDescription instrumentedMethod,
+                                                      boolean copyArguments,
                                                       List<? extends TypeDescription> enterTypes,
-                                                      List<? extends TypeDescription> intermediateTypes,
                                                       List<? extends TypeDescription> exitTypes,
                                                       ClassFileVersion classFileVersion,
                                                       int writerFlags,
                                                       int readerFlags) {
-                return (writerFlags & ClassWriter.COMPUTE_FRAMES) != 0 || classFileVersion.isLessThan(ClassFileVersion.JAVA_V6)
-                        ? NoOp.INSTANCE
-                        : new Default(instrumentedType, instrumentedMethod, enterTypes, intermediateTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
+                if ((writerFlags & ClassWriter.COMPUTE_FRAMES) != 0 || classFileVersion.isLessThan(ClassFileVersion.JAVA_V6)) {
+                    return NoOp.INSTANCE;
+                } else if (copyArguments) {
+                    return new WithCopiedArguments(instrumentedType, instrumentedMethod, enterTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
+                } else if (enterTypes.isEmpty()) {
+                    return new WithTrivialTranslation(instrumentedType, instrumentedMethod, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
+                } else {
+                    return new WithConsistentTranslation(instrumentedType, instrumentedMethod, enterTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
+                }
             }
 
             /**
@@ -4406,7 +4393,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
             @Override
             public StackMapFrameHandler.ForAdvice bindExit(MethodDescription.InDefinedShape adviceMethod) {
-                return new ForAdvice(adviceMethod, CompoundList.of(enterTypes, intermediateTypes, exitTypes), Collections.<TypeDescription>emptyList(), TranslationMode.EXIT);
+                return new ForAdvice(adviceMethod, CompoundList.of(enterTypes, exitTypes), Collections.<TypeDescription>emptyList(), TranslationMode.EXIT);
             }
 
             @Override
@@ -4414,24 +4401,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 return expandFrames
                         ? ClassReader.EXPAND_FRAMES
                         : AsmVisitorWrapper.NO_FLAGS;
-            }
-
-            @Override
-            public void translateFrame(MethodVisitor methodVisitor,
-                                       int type,
-                                       int localVariableLength,
-                                       Object[] localVariable,
-                                       int stackSize,
-                                       Object[] stack) {
-                translateFrame(methodVisitor,
-                        TranslationMode.COPY,
-                        instrumentedMethod,
-                        enterTypes,
-                        type,
-                        localVariableLength,
-                        localVariable,
-                        stackSize,
-                        stack);
             }
 
             /**
@@ -4522,7 +4491,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                         methodVisitor.visitFrame(Opcodes.F_SAME1, EMPTY.length, EMPTY, 1, new Object[]{toFrame(instrumentedMethod.getReturnType().asErasure())});
                     }
                 } else {
-                    injectFullFrame(methodVisitor, CompoundList.of(enterTypes, intermediateTypes), instrumentedMethod.getReturnType().represents(void.class)
+                    injectFullFrame(methodVisitor, enterTypes, instrumentedMethod.getReturnType().represents(void.class)
                             ? Collections.<TypeDescription>emptyList()
                             : Collections.singletonList(instrumentedMethod.getReturnType().asErasure()));
                 }
@@ -4533,7 +4502,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 if (!expandFrames && currentFrameDivergence == 0) {
                     methodVisitor.visitFrame(Opcodes.F_SAME1, EMPTY.length, EMPTY, 1, new Object[]{Type.getInternalName(Throwable.class)});
                 } else {
-                    injectFullFrame(methodVisitor, CompoundList.of(enterTypes, intermediateTypes), Collections.singletonList(TypeDescription.THROWABLE));
+                    injectFullFrame(methodVisitor, enterTypes, Collections.singletonList(TypeDescription.THROWABLE));
                 }
             }
 
@@ -4551,23 +4520,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                         methodVisitor.visitFrame(Opcodes.F_APPEND, local.length, local, EMPTY.length, EMPTY);
                     }
                 } else {
-                    injectFullFrame(methodVisitor, CompoundList.of(enterTypes, intermediateTypes, exitTypes), Collections.<TypeDescription>emptyList());
-                }
-            }
-
-            @Override
-            public void injectStartFrame(MethodVisitor methodVisitor) {
-                if (!intermediateTypes.isEmpty()) {
-                    if (!expandFrames && intermediateTypes.size() < 4) {
-                        Object[] local = new Object[intermediateTypes.size()];
-                        int index = 0;
-                        for (TypeDescription typeDescription : intermediateTypes) {
-                            local[index++] = toFrame(typeDescription);
-                        }
-                        methodVisitor.visitFrame(Opcodes.F_APPEND, local.length, local, 0, EMPTY);
-                    } else {
-                        injectFullFrame(methodVisitor, CompoundList.of(enterTypes, intermediateTypes), Collections.<TypeDescription>emptyList());
-                    }
+                    injectFullFrame(methodVisitor, CompoundList.of(enterTypes, exitTypes), Collections.<TypeDescription>emptyList());
                 }
             }
 
@@ -4586,7 +4539,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                         + typesInArray.size()];
                 int index = 0;
                 if (!instrumentedMethod.isStatic()) {
-                    localVariable[index++] = toFrame(instrumentedType);
+                    localVariable[index++] = toFrame(instrumentedType); // TODO: Uninitialized this?
                 }
                 for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
                     localVariable[index++] = toFrame(typeDescription);
@@ -4710,6 +4663,142 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                  * @return {@code true} if the value is a legal representation of the {@code this} reference.
                  */
                 protected abstract boolean isPossibleThisFrameValue(TypeDescription instrumentedType, MethodDescription instrumentedMethod, Object frame);
+            }
+
+            protected static class WithTrivialTranslation extends Default {
+
+                protected WithTrivialTranslation(TypeDescription instrumentedType,
+                                                 MethodDescription instrumentedMethod,
+                                                 List<? extends TypeDescription> exitTypes,
+                                                 boolean expandFrames) {
+                    super(instrumentedType, instrumentedMethod, Collections.emptyList(), exitTypes, expandFrames);
+                }
+
+                @Override
+                public void injectStartFrame(MethodVisitor methodVisitor) {
+                    /* do nothing */
+                }
+
+                @Override
+                public void translateFrame(MethodVisitor methodVisitor, int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
+                    methodVisitor.visitFrame(type, localVariableLength, localVariable, stackSize, stack);
+                }
+            }
+
+            protected static class WithConsistentTranslation extends Default {
+
+                protected WithConsistentTranslation(TypeDescription instrumentedType,
+                                                    MethodDescription instrumentedMethod,
+                                                    List<? extends TypeDescription> enterTypes,
+                                                    List<? extends TypeDescription> exitTypes,
+                                                    boolean expandFrames) {
+                    super(instrumentedType, instrumentedMethod, enterTypes, exitTypes, expandFrames);
+                }
+
+                @Override
+                public void injectStartFrame(MethodVisitor methodVisitor) {
+                    /* do nothing */
+                }
+
+                @Override
+                public void translateFrame(MethodVisitor methodVisitor, int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
+                    translateFrame(methodVisitor,
+                            TranslationMode.COPY,
+                            instrumentedMethod,
+                            enterTypes,
+                            type,
+                            localVariableLength,
+                            localVariable,
+                            stackSize,
+                            stack);
+                }
+            }
+
+            protected static class WithCopiedArguments extends Default {
+
+                protected WithCopiedArguments(TypeDescription instrumentedType,
+                                              MethodDescription instrumentedMethod,
+                                              List<? extends TypeDescription> enterTypes,
+                                              List<? extends TypeDescription> exitTypes,
+                                              boolean expandFrames) {
+                    super(instrumentedType, instrumentedMethod, enterTypes, exitTypes, expandFrames);
+                }
+
+
+                @Override
+                public void injectStartFrame(MethodVisitor methodVisitor) {
+                    Object[] localVariable = new Object[instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1)];
+                    int index = 0;
+                    if (instrumentedMethod.isConstructor()) {
+                        localVariable[index++] = instrumentedMethod.isConstructor()
+                                ? Opcodes.UNINITIALIZED_THIS
+                                : toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                    } else if (!instrumentedMethod.isStatic()) {
+                        localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                    }
+                    for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
+                        localVariable[index++] = toFrame(typeDescription);
+                    }
+                    if (localVariable.length > 0) {
+                        if (!expandFrames && localVariable.length < 4) {
+                            methodVisitor.visitFrame(Opcodes.F_APPEND, localVariable.length, localVariable, 0, EMPTY);
+                        } else {
+                            // TODO: Fix full frame layout
+                            methodVisitor.visitFrame(expandFrames ? Opcodes.F_NEW : Opcodes.F_FULL, localVariable.length, localVariable, 0, EMPTY);
+                        }
+                    }
+                }
+
+                @Override
+                public void translateFrame(MethodVisitor methodVisitor, int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
+                    switch (type) {
+                        case Opcodes.F_SAME:
+                        case Opcodes.F_SAME1:
+                            break;
+                        case Opcodes.F_APPEND:
+                            currentFrameDivergence += localVariableLength;
+                            break;
+                        case Opcodes.F_CHOP:
+                            currentFrameDivergence -= localVariableLength;
+                            break;
+                        case Opcodes.F_FULL:
+                        case Opcodes.F_NEW:
+                            Object[] translated = new Object[localVariableLength
+                                    + (instrumentedMethod.isStatic() ? 0 : 2)
+                                    + instrumentedMethod.getParameters().size() * 2
+                                    + enterTypes.size()];
+                            int index = 0;
+                            if (instrumentedMethod.isConstructor()) {
+                                boolean uninitializedThis = false;
+                                for (int frame = 0; frame < localVariableLength; frame++) {
+                                    if (localVariable[frame] == Opcodes.UNINITIALIZED_THIS) {
+                                        uninitializedThis = true;
+                                        break;
+                                    }
+                                }
+                                translated[index++] = uninitializedThis
+                                        ? Opcodes.UNINITIALIZED_THIS
+                                        : toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                            } else if (!instrumentedMethod.isStatic()) {
+                                translated[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                            }
+                            for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
+                                translated[index++] = toFrame(typeDescription);
+                            }
+                            System.arraycopy(localVariable,
+                                    0,
+                                    translated,
+                                    index,
+                                    localVariableLength);
+                            localVariableLength = translated.length;
+                            localVariable = translated;
+                            currentFrameDivergence = 0; // TODO: Correct?
+                            break;
+                        default:
+                            throw new IllegalArgumentException("Unexpected frame type: " + type);
+                    }
+                    methodVisitor.visitFrame(type, localVariableLength, localVariable, stackSize, stack);
+                }
             }
 
             /**
@@ -7722,11 +7811,11 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                     ? Collections.<TypeDescription>emptyList()
                     : Collections.singletonList(methodEnter.getEnterType().asErasure());
             argumentHandler = methodExit.getArgumentHandlerFactory().resolve(instrumentedMethod, methodEnter.getEnterType());
-            methodSizeHandler = MethodSizeHandler.Default.of(instrumentedMethod, enterTypes, argumentHandler.getIntermediateTypes(), exitTypes, writerFlags);
+            methodSizeHandler = MethodSizeHandler.Default.of(instrumentedMethod, argumentHandler.isCopyArguments(), enterTypes, exitTypes, writerFlags);
             stackMapFrameHandler = StackMapFrameHandler.Default.of(instrumentedType,
                     instrumentedMethod,
+                    argumentHandler.isCopyArguments(),
                     enterTypes,
-                    argumentHandler.getIntermediateTypes(),
                     exitTypes,
                     implementationContext.getClassFileVersion(),
                     writerFlags,
