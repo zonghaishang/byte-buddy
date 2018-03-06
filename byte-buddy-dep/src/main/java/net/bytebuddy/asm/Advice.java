@@ -4045,10 +4045,11 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             }
 
             @Override
-            public int compoundLocalVariableLength(int localVariableLength) {
+            public int compoundLocalVariableLength(int localVariableLength) { // TODO: Virtualize.
                 return Math.max(this.localVariableLength, localVariableLength
                         + StackSize.of(enterTypes)
-                        + StackSize.of(exitTypes));
+                        + StackSize.of(exitTypes)
+                        + (copyArguments ? (instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1)) : 0));
             }
 
             @Override
@@ -4058,7 +4059,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
             @Override
             public void requireLocalVariableLength(int localVariableLength) {
-                this.localVariableLength = Math.max(this.localVariableLength, localVariableLength + (copyArguments ? instrumentedMethod.getStackSize() : 0));
+                this.localVariableLength = Math.max(this.localVariableLength, localVariableLength);
             }
 
             /**
@@ -4105,12 +4106,12 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
                 @Override
                 public void requireStackSize(int stackSize) {
-                    Default.this.stackSize = Math.max(Default.this.stackSize, stackSize);
+                    Default.this.requireStackSize(stackSize);
                 }
 
                 @Override
                 public void requireLocalVariableLength(int localVariableLength) {
-                    Default.this.localVariableLength = Math.max(Default.this.localVariableLength, localVariableLength);
+                    Default.this.requireLocalVariableLength(localVariableLength);
                 }
 
                 @Override
@@ -4355,8 +4356,8 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                     return NoOp.INSTANCE;
                 } else if (copyArguments) {
                     return new WithCopiedArguments(instrumentedType, instrumentedMethod, enterTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
-                } else if (enterTypes.isEmpty()) {
-                    return new WithTrivialTranslation(instrumentedType, instrumentedMethod, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
+//                } else if (enterTypes.isEmpty()) {
+//                    return new WithTrivialTranslation(instrumentedType, instrumentedMethod, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
                 } else {
                     return new WithConsistentTranslation(instrumentedType, instrumentedMethod, enterTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
                 }
@@ -4770,6 +4771,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                             }
                             methodVisitor.visitFrame(expandFrames ? Opcodes.F_NEW : Opcodes.F_FULL, localVariable.length, localVariable, 0, EMPTY);
                         }
+                        currentFrameDivergence = instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1);
                     }
                 }
 

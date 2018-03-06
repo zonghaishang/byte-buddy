@@ -2,7 +2,9 @@ package net.bytebuddy.asm;
 
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+import net.bytebuddy.test.utility.DebuggingWrapper;
 import org.junit.Test;
+import org.objectweb.asm.ClassWriter;
 
 import static net.bytebuddy.matcher.ElementMatchers.isConstructor;
 import static net.bytebuddy.matcher.ElementMatchers.named;
@@ -58,7 +60,7 @@ public class AdviceArgumentHandlerTest {
         assertThat(type.getDeclaredMethod(FOO, String.class, String.class, String.class)
                 .invoke(type.getDeclaredConstructor().newInstance(), BAR, QUX, BAZ), is((Object) (BAR + QUX + BAZ)));
     }
-    
+
     @Test
     public void testShortExitOnlyMethod() throws Exception {
         Class<?> type = new ByteBuddy()
