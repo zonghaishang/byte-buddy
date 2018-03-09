@@ -4027,7 +4027,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                                                         int writerFlags) {
                 if ((writerFlags & (ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES)) != 0) {
                     return NoOp.INSTANCE;
-                } else if(copyArguments) {
+                } else if (copyArguments) {
                     return new WithCopiedArguments(instrumentedMethod, enterTypes, exitTypes);
                 } else {
                     return new WithoutCopiedArguments(instrumentedMethod, enterTypes, exitTypes);
@@ -4077,8 +4077,8 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                  * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
                  */
                 protected WithoutCopiedArguments(MethodDescription instrumentedMethod,
-                                  List<? extends TypeDescription> enterTypes,
-                                  List<? extends TypeDescription> exitTypes) {
+                                                 List<? extends TypeDescription> enterTypes,
+                                                 List<? extends TypeDescription> exitTypes) {
                     super(instrumentedMethod, enterTypes, exitTypes);
                 }
 
@@ -4105,8 +4105,8 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                  * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
                  */
                 protected WithCopiedArguments(MethodDescription instrumentedMethod,
-                                  List<? extends TypeDescription> enterTypes,
-                                  List<? extends TypeDescription> exitTypes) {
+                                              List<? extends TypeDescription> enterTypes,
+                                              List<? extends TypeDescription> exitTypes) {
                     super(instrumentedMethod, enterTypes, exitTypes);
                 }
 
@@ -4341,7 +4341,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             /**
              * The instrumented type.
              */
-            private final TypeDescription instrumentedType;
+            protected final TypeDescription instrumentedType;
 
             /**
              * The instrumented method.
@@ -4415,11 +4415,22 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 if ((writerFlags & ClassWriter.COMPUTE_FRAMES) != 0 || classFileVersion.isLessThan(ClassFileVersion.JAVA_V6)) {
                     return NoOp.INSTANCE;
                 } else if (copyArguments) {
-                    return new WithCopiedArguments(instrumentedType, instrumentedMethod, enterTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
+                    return new WithNonTrivialTranslation.WithCopiedArguments(instrumentedType,
+                            instrumentedMethod,
+                            enterTypes,
+                            exitTypes,
+                            (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
                 } else if (noExit && enterTypes.isEmpty()) { // TODO: Should not depend on enter types if no exit advice is set!
-                    return new WithTrivialTranslation(instrumentedType, instrumentedMethod, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
+                    return new WithTrivialTranslation(instrumentedType,
+                            instrumentedMethod,
+                            exitTypes,
+                            (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
                 } else {
-                    return new WithConsistentTranslation(instrumentedType, instrumentedMethod, enterTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
+                    return new WithNonTrivialTranslation.WithConsistentArguments(instrumentedType,
+                            instrumentedMethod,
+                            enterTypes,
+                            exitTypes,
+                            (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
                 }
             }
 
@@ -4592,30 +4603,9 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
              * @param typesInArray  The types that were added to the local variable array additionally to the values of the instrumented method.
              * @param typesOnStack  The types currently on the operand stack.
              */
-            protected void injectFullFrame(MethodVisitor methodVisitor,
-                                           List<? extends TypeDescription> typesInArray,
-                                           List<? extends TypeDescription> typesOnStack) {
-                Object[] localVariable = new Object[instrumentedMethod.getParameters().size()
-                        + (instrumentedMethod.isStatic() ? 0 : 1)
-                        + typesInArray.size()];
-                int index = 0;
-                if (!instrumentedMethod.isStatic()) {
-                    localVariable[index++] = toFrame(instrumentedType);
-                }
-                for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
-                    localVariable[index++] = toFrame(typeDescription);
-                }
-                for (TypeDescription typeDescription : typesInArray) {
-                    localVariable[index++] = toFrame(typeDescription);
-                }
-                index = 0;
-                Object[] stackType = new Object[typesOnStack.size()];
-                for (TypeDescription typeDescription : typesOnStack) {
-                    stackType[index++] = toFrame(typeDescription);
-                }
-                methodVisitor.visitFrame(expandFrames ? Opcodes.F_NEW : Opcodes.F_FULL, localVariable.length, localVariable, stackType.length, stackType);
-                currentFrameDivergence = 0;
-            }
+            protected abstract void injectFullFrame(MethodVisitor methodVisitor,
+                                                    List<? extends TypeDescription> typesInArray,
+                                                    List<? extends TypeDescription> typesOnStack);
 
             /**
              * A translation mode that determines how the fixed frames of the instrumented method are written.
@@ -4753,118 +4743,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
                 @Override
                 public void translateFrame(MethodVisitor methodVisitor, int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
-                    methodVisitor.visitFrame(type, localVariableLength, localVariable, stackSize, stack);
-                }
-            }
-
-            /**
-             * A default stack map frame handler that retains the original local variable with adjustments.
-             */
-            protected static class WithConsistentTranslation extends Default {
-
-                /**
-                 * Creates a default stack map frame handler for advice that retains the original local variable array with adjustments.
-                 *
-                 * @param instrumentedType   The instrumented type.
-                 * @param instrumentedMethod The instrumented method.
-                 * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
-                 * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
-                 * @param expandFrames       {@code true} if the meta data handler is expected to expand its frames.
-                 */
-                protected WithConsistentTranslation(TypeDescription instrumentedType,
-                                                    MethodDescription instrumentedMethod,
-                                                    List<? extends TypeDescription> enterTypes,
-                                                    List<? extends TypeDescription> exitTypes,
-                                                    boolean expandFrames) {
-                    super(instrumentedType, instrumentedMethod, enterTypes, exitTypes, expandFrames);
-                }
-
-                @Override
-                public void injectStartFrame(MethodVisitor methodVisitor) {
-                    /* do nothing */
-                }
-
-                @Override
-                public void translateFrame(MethodVisitor methodVisitor, int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
-                    translateFrame(methodVisitor,
-                            TranslationMode.COPY,
-                            instrumentedMethod,
-                            enterTypes,
-                            type,
-                            localVariableLength,
-                            localVariable,
-                            stackSize,
-                            stack);
-                }
-            }
-
-            /**
-             * A default stack map frame handler that copies all arguments before executing the instrumented method.
-             */
-            protected static class WithCopiedArguments extends Default {
-
-                /**
-                 * Creates a default stack map frame handler for advice that copies all arguments before executing the instrumented method.
-                 *
-                 * @param instrumentedType   The instrumented type.
-                 * @param instrumentedMethod The instrumented method.
-                 * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
-                 * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
-                 * @param expandFrames       {@code true} if the meta data handler is expected to expand its frames.
-                 */
-                protected WithCopiedArguments(TypeDescription instrumentedType,
-                                              MethodDescription instrumentedMethod,
-                                              List<? extends TypeDescription> enterTypes,
-                                              List<? extends TypeDescription> exitTypes,
-                                              boolean expandFrames) {
-                    super(instrumentedType, instrumentedMethod, enterTypes, exitTypes, expandFrames);
-                }
-
-                @Override
-                public void injectStartFrame(MethodVisitor methodVisitor) {
-                    if (instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1) > 0) {
-                        if (!expandFrames && instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1) < 4) {
-                            Object[] localVariable = new Object[instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1)];
-                            int index = 0;
-                            if (instrumentedMethod.isConstructor()) {
-                                localVariable[index++] = Opcodes.UNINITIALIZED_THIS;
-                            } else if (!instrumentedMethod.isStatic()) {
-                                localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
-                            }
-                            for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
-                                localVariable[index++] = toFrame(typeDescription);
-                            }
-                            methodVisitor.visitFrame(Opcodes.F_APPEND, localVariable.length, localVariable, 0, EMPTY);
-                        } else {
-                            Object[] localVariable = new Object[instrumentedMethod.getParameters().size() * 2 + (instrumentedMethod.isStatic() ? 0 : 2) + enterTypes.size()];
-                            int index = 0;
-                            if (instrumentedMethod.isConstructor()) {
-                                localVariable[index++] = Opcodes.UNINITIALIZED_THIS;
-                            } else if (!instrumentedMethod.isStatic()) {
-                                localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
-                            }
-                            for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
-                                localVariable[index++] = toFrame(typeDescription);
-                            }
-                            for (TypeDescription typeDescription : enterTypes) {
-                                localVariable[index++] = toFrame(typeDescription);
-                            }
-                            if (instrumentedMethod.isConstructor()) {
-                                localVariable[index++] = Opcodes.UNINITIALIZED_THIS;
-                            } else if (!instrumentedMethod.isStatic()) {
-                                localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
-                            }
-                            for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
-                                localVariable[index++] = toFrame(typeDescription);
-                            }
-                            methodVisitor.visitFrame(expandFrames ? Opcodes.F_NEW : Opcodes.F_FULL, localVariable.length, localVariable, 0, EMPTY);
-                        }
-                        currentFrameDivergence = instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1);
-                    }
-                }
-
-                @Override
-                public void translateFrame(MethodVisitor methodVisitor, int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
                     switch (type) {
                         case Opcodes.F_SAME:
                         case Opcodes.F_SAME1:
@@ -4877,44 +4755,249 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                             break;
                         case Opcodes.F_FULL:
                         case Opcodes.F_NEW:
-                            Object[] translated = new Object[localVariableLength
-                                    + (instrumentedMethod.isStatic() ? 0 : 1)
-                                    + instrumentedMethod.getParameters().size()
-                                    + enterTypes.size()];
-                            int index = 0;
-                            if (instrumentedMethod.isConstructor()) {
-                                boolean uninitializedThis = false;
-                                for (int frame = 0; frame < localVariableLength; frame++) {
-                                    if (localVariable[frame] == Opcodes.UNINITIALIZED_THIS) {
-                                        uninitializedThis = true;
-                                        break;
-                                    }
-                                }
-                                translated[index++] = uninitializedThis
-                                        ? Opcodes.UNINITIALIZED_THIS
-                                        : toFrame(instrumentedMethod.getDeclaringType().asErasure());
-                            } else if (!instrumentedMethod.isStatic()) {
-                                translated[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
-                            }
-                            for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
-                                translated[index++] = toFrame(typeDescription);
-                            }
-                            for (TypeDescription typeDescription : enterTypes) {
-                                translated[index++] = toFrame(typeDescription);
-                            }
-                            System.arraycopy(localVariable,
-                                    0,
-                                    translated,
-                                    index,
-                                    localVariableLength);
-                            currentFrameDivergence = localVariableLength;
-                            localVariableLength = translated.length;
-                            localVariable = translated;
+                            currentFrameDivergence = instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1) - localVariableLength;
                             break;
                         default:
                             throw new IllegalArgumentException("Unexpected frame type: " + type);
                     }
                     methodVisitor.visitFrame(type, localVariableLength, localVariable, stackSize, stack);
+                }
+
+                @Override
+                protected void injectFullFrame(MethodVisitor methodVisitor,
+                                               List<? extends TypeDescription> typesInArray,
+                                               List<? extends TypeDescription> typesOnStack) {
+                    Object[] localVariable = new Object[instrumentedMethod.getStackSize() + typesInArray.size()];
+                    int index = 0;
+                    if (!instrumentedMethod.isStatic()) {
+                        localVariable[index++] = Opcodes.TOP;
+                    }
+                    for (TypeDescription.Generic typeDescription : instrumentedMethod.getParameters().asTypeList()) {
+                        localVariable[index++] = Opcodes.TOP;
+                        if (typeDescription.getStackSize() == StackSize.DOUBLE) {
+                            localVariable[index++] = Opcodes.TOP; // TODO: Does this really work? Requires test!
+                        }
+                    }
+                    for (TypeDescription typeDescription : typesInArray) {
+                        localVariable[index++] = toFrame(typeDescription);
+                    }
+                    index = 0;
+                    Object[] stackType = new Object[typesOnStack.size()];
+                    for (TypeDescription typeDescription : typesOnStack) {
+                        stackType[index++] = toFrame(typeDescription);
+                    }
+                    methodVisitor.visitFrame(expandFrames ? Opcodes.F_NEW : Opcodes.F_FULL, localVariable.length, localVariable, stackType.length, stackType);
+                    currentFrameDivergence = 0;
+                }
+            }
+
+            /**
+             * A default stack map frame handler that does not retain the original local variables in their original form but that applies adjustments.
+             */
+            protected abstract static class WithNonTrivialTranslation extends Default {
+
+                /**
+                 * Creates a non-trivial stack map frame handler.
+                 *
+                 * @param instrumentedType   The instrumented type.
+                 * @param instrumentedMethod The instrumented method.
+                 * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
+                 * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
+                 * @param expandFrames       {@code true} if the meta data handler is expected to expand its frames.
+                 */
+                protected WithNonTrivialTranslation(TypeDescription instrumentedType,
+                                                    MethodDescription instrumentedMethod,
+                                                    List<? extends TypeDescription> enterTypes,
+                                                    List<? extends TypeDescription> exitTypes,
+                                                    boolean expandFrames) {
+                    super(instrumentedType, instrumentedMethod, enterTypes, exitTypes, expandFrames);
+                }
+
+                @Override
+                protected void injectFullFrame(MethodVisitor methodVisitor,
+                                               List<? extends TypeDescription> typesInArray,
+                                               List<? extends TypeDescription> typesOnStack) {
+                    Object[] localVariable = new Object[instrumentedMethod.getParameters().size()
+                            + (instrumentedMethod.isStatic() ? 0 : 1)
+                            + typesInArray.size()];
+                    int index = 0;
+                    if (!instrumentedMethod.isStatic()) {
+                        localVariable[index++] = toFrame(instrumentedType);
+                    }
+                    for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
+                        localVariable[index++] = toFrame(typeDescription);
+                    }
+                    for (TypeDescription typeDescription : typesInArray) {
+                        localVariable[index++] = toFrame(typeDescription);
+                    }
+                    index = 0;
+                    Object[] stackType = new Object[typesOnStack.size()];
+                    for (TypeDescription typeDescription : typesOnStack) {
+                        stackType[index++] = toFrame(typeDescription);
+                    }
+                    methodVisitor.visitFrame(expandFrames ? Opcodes.F_NEW : Opcodes.F_FULL, localVariable.length, localVariable, stackType.length, stackType);
+                    currentFrameDivergence = 0;
+                }
+
+                /**
+                 * A default stack map frame handler that retains the original local variable with adjustments.
+                 */
+                protected static class WithConsistentArguments extends WithNonTrivialTranslation {
+
+                    /**
+                     * Creates a default stack map frame handler for advice that retains the original local variable array with adjustments.
+                     *
+                     * @param instrumentedType   The instrumented type.
+                     * @param instrumentedMethod The instrumented method.
+                     * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
+                     * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
+                     * @param expandFrames       {@code true} if the meta data handler is expected to expand its frames.
+                     */
+                    protected WithConsistentArguments(TypeDescription instrumentedType,
+                                                      MethodDescription instrumentedMethod,
+                                                      List<? extends TypeDescription> enterTypes,
+                                                      List<? extends TypeDescription> exitTypes,
+                                                      boolean expandFrames) {
+                        super(instrumentedType, instrumentedMethod, enterTypes, exitTypes, expandFrames);
+                    }
+
+                    @Override
+                    public void injectStartFrame(MethodVisitor methodVisitor) {
+                        /* do nothing */
+                    }
+
+                    @Override
+                    public void translateFrame(MethodVisitor methodVisitor, int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
+                        translateFrame(methodVisitor,
+                                TranslationMode.COPY,
+                                instrumentedMethod,
+                                enterTypes,
+                                type,
+                                localVariableLength,
+                                localVariable,
+                                stackSize,
+                                stack);
+                    }
+                }
+
+                /**
+                 * A default stack map frame handler that copies all arguments before executing the instrumented method.
+                 */
+                protected static class WithCopiedArguments extends WithNonTrivialTranslation {
+
+                    /**
+                     * Creates a default stack map frame handler for advice that copies all arguments before executing the instrumented method.
+                     *
+                     * @param instrumentedType   The instrumented type.
+                     * @param instrumentedMethod The instrumented method.
+                     * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
+                     * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
+                     * @param expandFrames       {@code true} if the meta data handler is expected to expand its frames.
+                     */
+                    protected WithCopiedArguments(TypeDescription instrumentedType,
+                                                  MethodDescription instrumentedMethod,
+                                                  List<? extends TypeDescription> enterTypes,
+                                                  List<? extends TypeDescription> exitTypes,
+                                                  boolean expandFrames) {
+                        super(instrumentedType, instrumentedMethod, enterTypes, exitTypes, expandFrames);
+                    }
+
+                    @Override
+                    public void injectStartFrame(MethodVisitor methodVisitor) {
+                        if (instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1) > 0) {
+                            if (!expandFrames && instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1) < 4) {
+                                Object[] localVariable = new Object[instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1)];
+                                int index = 0;
+                                if (instrumentedMethod.isConstructor()) {
+                                    localVariable[index++] = Opcodes.UNINITIALIZED_THIS;
+                                } else if (!instrumentedMethod.isStatic()) {
+                                    localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                                }
+                                for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
+                                    localVariable[index++] = toFrame(typeDescription);
+                                }
+                                methodVisitor.visitFrame(Opcodes.F_APPEND, localVariable.length, localVariable, 0, EMPTY);
+                            } else {
+                                Object[] localVariable = new Object[instrumentedMethod.getParameters().size() * 2 + (instrumentedMethod.isStatic() ? 0 : 2) + enterTypes.size()];
+                                int index = 0;
+                                if (instrumentedMethod.isConstructor()) {
+                                    localVariable[index++] = Opcodes.UNINITIALIZED_THIS;
+                                } else if (!instrumentedMethod.isStatic()) {
+                                    localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                                }
+                                for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
+                                    localVariable[index++] = toFrame(typeDescription);
+                                }
+                                for (TypeDescription typeDescription : enterTypes) {
+                                    localVariable[index++] = toFrame(typeDescription);
+                                }
+                                if (instrumentedMethod.isConstructor()) {
+                                    localVariable[index++] = Opcodes.UNINITIALIZED_THIS;
+                                } else if (!instrumentedMethod.isStatic()) {
+                                    localVariable[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                                }
+                                for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
+                                    localVariable[index++] = toFrame(typeDescription);
+                                }
+                                methodVisitor.visitFrame(expandFrames ? Opcodes.F_NEW : Opcodes.F_FULL, localVariable.length, localVariable, 0, EMPTY);
+                            }
+                            currentFrameDivergence = instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1);
+                        }
+                    }
+
+                    @Override
+                    public void translateFrame(MethodVisitor methodVisitor, int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
+                        switch (type) {
+                            case Opcodes.F_SAME:
+                            case Opcodes.F_SAME1:
+                                break;
+                            case Opcodes.F_APPEND:
+                                currentFrameDivergence += localVariableLength;
+                                break;
+                            case Opcodes.F_CHOP:
+                                currentFrameDivergence -= localVariableLength;
+                                break;
+                            case Opcodes.F_FULL:
+                            case Opcodes.F_NEW:
+                                Object[] translated = new Object[localVariableLength
+                                        + (instrumentedMethod.isStatic() ? 0 : 1)
+                                        + instrumentedMethod.getParameters().size()
+                                        + enterTypes.size()];
+                                int index = 0;
+                                if (instrumentedMethod.isConstructor()) {
+                                    boolean uninitializedThis = false;
+                                    for (int frame = 0; frame < localVariableLength; frame++) {
+                                        if (localVariable[frame] == Opcodes.UNINITIALIZED_THIS) {
+                                            uninitializedThis = true;
+                                            break;
+                                        }
+                                    }
+                                    translated[index++] = uninitializedThis
+                                            ? Opcodes.UNINITIALIZED_THIS
+                                            : toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                                } else if (!instrumentedMethod.isStatic()) {
+                                    translated[index++] = toFrame(instrumentedMethod.getDeclaringType().asErasure());
+                                }
+                                for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
+                                    translated[index++] = toFrame(typeDescription);
+                                }
+                                for (TypeDescription typeDescription : enterTypes) {
+                                    translated[index++] = toFrame(typeDescription);
+                                }
+                                System.arraycopy(localVariable,
+                                        0,
+                                        translated,
+                                        index,
+                                        localVariableLength);
+                                currentFrameDivergence = localVariableLength;
+                                localVariableLength = translated.length;
+                                localVariable = translated;
+                                break;
+                            default:
+                                throw new IllegalArgumentException("Unexpected frame type: " + type);
+                        }
+                        methodVisitor.visitFrame(type, localVariableLength, localVariable, stackSize, stack);
+                    }
                 }
             }
 
