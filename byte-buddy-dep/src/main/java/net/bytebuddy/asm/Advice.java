@@ -30,6 +30,7 @@ import net.bytebuddy.pool.TypePool;
 import net.bytebuddy.utility.CompoundList;
 import net.bytebuddy.utility.JavaType;
 import net.bytebuddy.utility.visitor.ExceptionTableSensitiveMethodVisitor;
+import net.bytebuddy.utility.visitor.StackMapFramePaddingMethodVisitor;
 import net.bytebuddy.utility.visitor.LineNumberPrependingMethodVisitor;
 import net.bytebuddy.utility.visitor.StackAwareMethodVisitor;
 import org.objectweb.asm.*;
@@ -492,9 +493,9 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                    Implementation.Context implementationContext,
                                    int writerFlags,
                                    int readerFlags) {
-        methodVisitor = methodEnter.isPrependLineNumber()
+        methodVisitor = new StackMapFramePaddingMethodVisitor(Opcodes.ASM6, methodEnter.isPrependLineNumber()
                 ? new LineNumberPrependingMethodVisitor(methodVisitor)
-                : methodVisitor;
+                : methodVisitor);
         if (!methodExit.isAlive()) {
             return new AdviceVisitor.WithoutExitAdvice(methodVisitor,
                     implementationContext,
@@ -7945,7 +7946,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
         /**
          * The actual method visitor that is underlying this method visitor to which all instructions are written.
          */
-        protected final MethodVisitor methodVisitor;
+        protected final MethodVisitor methodVisitor; // TODO: Analyze how this was intended!
 
         /**
          * A description of the instrumented method.
@@ -8074,8 +8075,8 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
         }
 
         @Override
-        public void visitFrame(int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
-            stackMapFrameHandler.translateFrame(methodVisitor, type, localVariableLength, localVariable, stackSize, stack);
+        protected void onVisitFrame(int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
+            stackMapFrameHandler.translateFrame(mv, type, localVariableLength, localVariable, stackSize, stack);
         }
 
         @Override

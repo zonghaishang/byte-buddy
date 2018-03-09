@@ -12,7 +12,7 @@ public abstract class ExceptionTableSensitiveMethodVisitor extends MethodVisitor
     /**
      * {@code true} if the exception table callback was already triggered.
      */
-    private boolean trigger;
+    private boolean triggered;
 
     /**
      * Creates an exception table sensitive method visitor.
@@ -22,15 +22,14 @@ public abstract class ExceptionTableSensitiveMethodVisitor extends MethodVisitor
      */
     protected ExceptionTableSensitiveMethodVisitor(int api, MethodVisitor methodVisitor) {
         super(api, methodVisitor);
-        trigger = true;
     }
 
     /**
      * Considers if the end of the exception table was reached.
      */
     private void considerEndOfExceptionTable() {
-        if (trigger) {
-            trigger = false;
+        if (!triggered) {
+            triggered = true;
             onAfterExceptionTable();
         }
     }
@@ -107,9 +106,9 @@ public abstract class ExceptionTableSensitiveMethodVisitor extends MethodVisitor
     }
 
     @Override
-    public final void visitFieldInsn(int opcode, String owner, String name, String desc) {
+    public final void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
         considerEndOfExceptionTable();
-        onVisitFieldInsn(opcode, owner, name, desc);
+        onVisitFieldInsn(opcode, owner, name, descriptor);
     }
 
     /**
@@ -288,16 +287,6 @@ public abstract class ExceptionTableSensitiveMethodVisitor extends MethodVisitor
         onVisitInsn(opcode);
     }
 
-//    @Override
-//    public final void visitFrame(int type, int nLocal, Object[] local, int nStack, Object[] stack) {
-//        considerEndOfExceptionTable();
-//        onVisitFrame(type, nLocal, local, nStack, stack);
-//    }
-//
-//    protected void onVisitFrame(int type, int nLocal, Object[] local, int nStack, Object[] stack) {
-//        super.visitFrame(type, nLocal, local, nStack, stack);
-//    }
-
     /**
      * Visits a simple instruction.
      *
@@ -305,5 +294,44 @@ public abstract class ExceptionTableSensitiveMethodVisitor extends MethodVisitor
      */
     protected void onVisitInsn(int opcode) {
         super.visitInsn(opcode);
+    }
+
+    @Override
+    public final void visitFrame(int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
+        considerEndOfExceptionTable();
+        onVisitFrame(type, localVariableLength, localVariable, stackSize, stack);
+    }
+
+    /**
+     * Visits a stack map frame instruction.
+     *
+     * @param type                The frame type.
+     * @param localVariableLength The length of the local variable array.
+     * @param localVariable       An array containing the frames of the local variable array.
+     * @param stackSize           The size of the operand stack.
+     * @param stack               An array containing the frames of the operand stack.
+     */
+    protected void onVisitFrame(int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
+        super.visitFrame(type, localVariableLength, localVariable, stackSize, stack);
+    }
+
+    @Override
+    public final void visitTryCatchBlock(Label start, Label end, Label handler, String type) {
+        if (triggered) {
+            throw new IllegalStateException("Try catch-blocks must be visited at the beginning of the method to retain correct handler ordering");
+        }
+        onVisitTryCatchBlock(start, end, handler, type);
+    }
+
+    /**
+     * Visits a try-catch block.
+     *
+     * @param start   The start of the try-catch block.
+     * @param end     The end of the the try-catch block.
+     * @param handler The handler for exceptions within this block.
+     * @param type    The exception type or {@code null} if any throwable should be catched.
+     */
+    protected void onVisitTryCatchBlock(Label start, Label end, Label handler, String type) {
+        super.visitTryCatchBlock(start, end, handler, type);
     }
 }

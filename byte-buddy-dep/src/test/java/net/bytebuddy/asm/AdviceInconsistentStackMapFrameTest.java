@@ -9,7 +9,6 @@ import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
 import net.bytebuddy.dynamic.scaffold.InstrumentedType;
 import net.bytebuddy.implementation.Implementation;
 import net.bytebuddy.implementation.bytecode.ByteCodeAppender;
-import net.bytebuddy.test.utility.DebuggingWrapper;
 import net.bytebuddy.test.utility.JavaVersionRule;
 import org.junit.Rule;
 import org.junit.Test;
@@ -119,6 +118,27 @@ public class AdviceInconsistentStackMapFrameTest {
 
     @Test
     @JavaVersionRule.Enforce(7)
+    public void testFrameInconsistentInstructionPrimitiveFrameRetention() throws Exception {
+        Class<?> type = new ByteBuddy()
+                .subclass(Object.class)
+                .defineMethod(FOO, String.class, Visibility.PUBLIC, Ownership.STATIC)
+                .withParameters(long.class)
+                .intercept(new InconsistentInstructionMethod())
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
+                .getLoaded();
+        assertThat(type.getDeclaredMethod(FOO, long.class).invoke(type.getDeclaredConstructor().newInstance(), 0L), is((Object) BAR));
+        Class<?> redefined = new ByteBuddy()
+                .redefine(type)
+                .visit(Advice.to(TrivialAdviceFrameRetention.class).on(named(FOO)))
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO, long.class).invoke(redefined.getDeclaredConstructor().newInstance(), 0L), is((Object) BAR));
+    }
+
+    @Test
+    @JavaVersionRule.Enforce(7)
     public void testFrameTooShortFrameRetention() throws Exception {
         Class<?> type = new ByteBuddy()
                 .subclass(Object.class)
@@ -216,6 +236,27 @@ public class AdviceInconsistentStackMapFrameTest {
                 .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
                 .getLoaded();
         assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
+    }
+
+    @Test
+    @JavaVersionRule.Enforce(7)
+    public void testFrameInconsistentInstructionPrimitiveBackupArgument() throws Exception {
+        Class<?> type = new ByteBuddy()
+                .subclass(Object.class)
+                .defineMethod(FOO, String.class, Visibility.PUBLIC, Ownership.STATIC)
+                .withParameters(long.class)
+                .intercept(new InconsistentInstructionMethod())
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
+                .getLoaded();
+        assertThat(type.getDeclaredMethod(FOO, long.class).invoke(type.getDeclaredConstructor().newInstance(), 0L), is((Object) BAR));
+        Class<?> redefined = new ByteBuddy()
+                .redefine(type)
+                .visit(Advice.to(TrivialAdviceBackupArgument.class).on(named(FOO)))
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO, long.class).invoke(redefined.getDeclaredConstructor().newInstance(), 0L), is((Object) BAR));
     }
 
     @Test
@@ -362,7 +403,6 @@ public class AdviceInconsistentStackMapFrameTest {
 
         @Override
         public Size apply(MethodVisitor methodVisitor, Context implementationContext, MethodDescription instrumentedMethod) {
-            methodVisitor.visitInsn(Opcodes.NOP); // TODO: Fix visitation order
             methodVisitor.visitFrame(Opcodes.F_FULL, 0, new Object[0], 0, new Object[0]);
             methodVisitor.visitLdcInsn(BAR);
             methodVisitor.visitInsn(Opcodes.ARETURN);
@@ -384,7 +424,6 @@ public class AdviceInconsistentStackMapFrameTest {
 
         @Override
         public Size apply(MethodVisitor methodVisitor, Context implementationContext, MethodDescription instrumentedMethod) {
-            methodVisitor.visitInsn(Opcodes.NOP); // TODO: Fix visitation order
             methodVisitor.visitFrame(Opcodes.F_CHOP, 1, new Object[0], 0, null);
             methodVisitor.visitLdcInsn(BAR);
             methodVisitor.visitInsn(Opcodes.ARETURN);
@@ -406,7 +445,6 @@ public class AdviceInconsistentStackMapFrameTest {
 
         @Override
         public Size apply(MethodVisitor methodVisitor, Context implementationContext, MethodDescription instrumentedMethod) {
-            methodVisitor.visitInsn(Opcodes.NOP); // TODO: Fix visitation order
             methodVisitor.visitFrame(Opcodes.F_FULL, 1, new Object[]{TypeDescription.OBJECT.getInternalName()}, 0, new Object[0]);
             methodVisitor.visitLdcInsn(BAR);
             methodVisitor.visitInsn(Opcodes.ARETURN);
@@ -428,7 +466,6 @@ public class AdviceInconsistentStackMapFrameTest {
 
         @Override
         public Size apply(MethodVisitor methodVisitor, Context implementationContext, MethodDescription instrumentedMethod) {
-            methodVisitor.visitInsn(Opcodes.NOP); // TODO: Fix visitation order
             methodVisitor.visitFrame(Opcodes.F_FULL, 1, new Object[]{TypeDescription.OBJECT.getInternalName()}, 0, new Object[0]);
             methodVisitor.visitLdcInsn(BAR);
             methodVisitor.visitInsn(Opcodes.ARETURN);

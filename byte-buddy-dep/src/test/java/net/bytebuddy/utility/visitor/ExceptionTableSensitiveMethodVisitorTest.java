@@ -39,6 +39,7 @@ public class ExceptionTableSensitiveMethodVisitorTest {
                 {Opcodes.ASM6, "visitLookupSwitchInsn", new Class<?>[]{Label.class, int[].class, Label[].class}, new Object[]{new Label(), new int[0], new Label[0]}},
                 {Opcodes.ASM6, "visitMultiANewArrayInsn", new Class<?>[]{String.class, int.class}, new Object[]{"", 0}},
                 {Opcodes.ASM6, "visitInsn", new Class<?>[]{int.class}, new Object[]{0}},
+                {Opcodes.ASM6, "visitFrame", new Class<?>[]{int.class, int.class, Object[].class, int.class, Object[].class}, new Object[]{0, 0, null, 0, null}}
         });
     }
 
