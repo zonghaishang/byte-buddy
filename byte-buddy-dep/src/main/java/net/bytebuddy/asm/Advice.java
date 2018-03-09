@@ -3968,27 +3968,22 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
         /**
          * A default implementation for a method size handler.
          */
-        class Default implements MethodSizeHandler.ForInstrumentedMethod {
+        abstract class Default implements MethodSizeHandler.ForInstrumentedMethod {
 
             /**
              * The instrumented method.
              */
-            private final MethodDescription instrumentedMethod;
-
-            /**
-             * {@code true} if the original arguments are copied.
-             */
-            private final boolean copyArguments;
+            protected final MethodDescription instrumentedMethod;
 
             /**
              * A list of virtual method arguments that are available before the instrumented method is executed.
              */
-            private final List<? extends TypeDescription> enterTypes;
+            protected final List<? extends TypeDescription> enterTypes;
 
             /**
              * A list of virtual method arguments that are available after the instrumented method has completed.
              */
-            private final List<? extends TypeDescription> exitTypes;
+            protected final List<? extends TypeDescription> exitTypes;
 
             /**
              * The maximum stack size required by a visited advice method.
@@ -3998,22 +3993,19 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             /**
              * The maximum length of the local variable array required by a visited advice method.
              */
-            private int localVariableLength;
+            protected int localVariableLength;
 
             /**
              * Creates a new default meta data handler that recomputes the space requirements of an instrumented method.
              *
              * @param instrumentedMethod The instrumented method.
-             * @param copyArguments      {@code true} if the original arguments are copied.
              * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
              * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
              */
             protected Default(MethodDescription instrumentedMethod,
-                              boolean copyArguments,
                               List<? extends TypeDescription> enterTypes,
                               List<? extends TypeDescription> exitTypes) {
                 this.instrumentedMethod = instrumentedMethod;
-                this.copyArguments = copyArguments;
                 this.enterTypes = enterTypes;
                 this.exitTypes = exitTypes;
             }
@@ -4033,9 +4025,13 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                                                         List<? extends TypeDescription> enterTypes,
                                                                         List<? extends TypeDescription> exitTypes,
                                                                         int writerFlags) {
-                return (writerFlags & (ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES)) != 0
-                        ? NoOp.INSTANCE
-                        : new Default(instrumentedMethod, copyArguments, enterTypes, exitTypes);
+                if ((writerFlags & (ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES)) != 0) {
+                    return NoOp.INSTANCE;
+                } else if(copyArguments) {
+                    return new WithCopiedArguments(instrumentedMethod, enterTypes, exitTypes);
+                } else {
+                    return new WithoutCopiedArguments(instrumentedMethod, enterTypes, exitTypes);
+                }
             }
 
             @Override
@@ -4058,14 +4054,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             }
 
             @Override
-            public int compoundLocalVariableLength(int localVariableLength) { // TODO: Virtualize.
-                return Math.max(this.localVariableLength, localVariableLength
-                        + StackSize.of(enterTypes)
-                        + StackSize.of(exitTypes)
-                        + (copyArguments ? (instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1)) : 0));
-            }
-
-            @Override
             public void requireStackSize(int stackSize) {
                 this.stackSize = Math.max(this.stackSize, stackSize);
             }
@@ -4073,6 +4061,62 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             @Override
             public void requireLocalVariableLength(int localVariableLength) {
                 this.localVariableLength = Math.max(this.localVariableLength, localVariableLength);
+            }
+
+            /**
+             * A default implementation for a method size handler that assumes that no arguments of the instrumented method were copied.
+             */
+            protected static class WithoutCopiedArguments extends Default {
+
+                /**
+                 * Creates a new default meta data handler that recomputes the space requirements of an instrumented method when the
+                 * arguments of the original method are not copied.
+                 *
+                 * @param instrumentedMethod The instrumented method.
+                 * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
+                 * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
+                 */
+                protected WithoutCopiedArguments(MethodDescription instrumentedMethod,
+                                  List<? extends TypeDescription> enterTypes,
+                                  List<? extends TypeDescription> exitTypes) {
+                    super(instrumentedMethod, enterTypes, exitTypes);
+                }
+
+
+                @Override
+                public int compoundLocalVariableLength(int localVariableLength) {
+                    return Math.max(this.localVariableLength, localVariableLength
+                            + StackSize.of(enterTypes)
+                            + StackSize.of(exitTypes));
+                }
+            }
+
+            /**
+             * A default implementation for a method size handler that assumes that all arguments of the instrumented method were copied.
+             */
+            protected static class WithCopiedArguments extends Default {
+
+                /**
+                 * Creates a new default meta data handler that recomputes the space requirements of an instrumented method when the
+                 * arguments of the original method are copied.
+                 *
+                 * @param instrumentedMethod The instrumented method.
+                 * @param enterTypes         A list of virtual method arguments that are available before the instrumented method is executed.
+                 * @param exitTypes          A list of virtual method arguments that are available after the instrumented method has completed.
+                 */
+                protected WithCopiedArguments(MethodDescription instrumentedMethod,
+                                  List<? extends TypeDescription> enterTypes,
+                                  List<? extends TypeDescription> exitTypes) {
+                    super(instrumentedMethod, enterTypes, exitTypes);
+                }
+
+                @Override
+                public int compoundLocalVariableLength(int localVariableLength) {
+                    return Math.max(this.localVariableLength, localVariableLength
+                            + StackSize.of(enterTypes)
+                            + StackSize.of(exitTypes)
+                            + instrumentedMethod.getParameters().size() + (instrumentedMethod.isStatic() ? 0 : 1));
+                }
             }
 
             /**
@@ -4372,7 +4416,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                     return NoOp.INSTANCE;
                 } else if (copyArguments) {
                     return new WithCopiedArguments(instrumentedType, instrumentedMethod, enterTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
-                } else if (noExit && enterTypes.isEmpty()) {
+                } else if (noExit && enterTypes.isEmpty()) { // TODO: Should not depend on enter types if no exit advice is set!
                     return new WithTrivialTranslation(instrumentedType, instrumentedMethod, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
                 } else {
                     return new WithConsistentTranslation(instrumentedType, instrumentedMethod, enterTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
@@ -4489,7 +4533,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                 translated,
                                 index,
                                 translated.length - index);
-                        currentFrameDivergence = translated.length - index; // TODO: Is this correct?
+                        currentFrameDivergence = translated.length - index;
                         localVariableLength = translated.length;
                         localVariable = translated;
                         break;
@@ -4542,7 +4586,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             }
 
             /**
-             * Injects a full stack map frame.
+             * Injects a full stack map frame. Any {@code this} reference must be resolved if used within a constructor.
              *
              * @param methodVisitor The method visitor onto which to write the stack map frame.
              * @param typesInArray  The types that were added to the local variable array additionally to the values of the instrumented method.
@@ -4556,7 +4600,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                         + typesInArray.size()];
                 int index = 0;
                 if (!instrumentedMethod.isStatic()) {
-                    localVariable[index++] = toFrame(instrumentedType); // TODO: Uninitialized this?
+                    localVariable[index++] = toFrame(instrumentedType);
                 }
                 for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
                     localVariable[index++] = toFrame(typeDescription);
@@ -4685,7 +4729,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             /**
              * A default stack map frame handler that retains the original local variable without adjustments.
              */
-            protected static class WithTrivialTranslation extends Default { // TODO: Set original arguments to TOP to avoid breakage.
+            protected static class WithTrivialTranslation extends Default { // TODO: Set original arguments to TOP to avoid breakage (needs test).
 
                 /**
                  * Creates a default stack map frame handler for advice that retains the original local variable array without adjustments.
