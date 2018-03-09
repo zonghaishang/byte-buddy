@@ -288,6 +288,16 @@ public abstract class ExceptionTableSensitiveMethodVisitor extends MethodVisitor
         onVisitInsn(opcode);
     }
 
+//    @Override
+//    public final void visitFrame(int type, int nLocal, Object[] local, int nStack, Object[] stack) {
+//        considerEndOfExceptionTable();
+//        onVisitFrame(type, nLocal, local, nStack, stack);
+//    }
+//
+//    protected void onVisitFrame(int type, int nLocal, Object[] local, int nStack, Object[] stack) {
+//        super.visitFrame(type, nLocal, local, nStack, stack);
+//    }
+
     /**
      * Visits a simple instruction.
      *

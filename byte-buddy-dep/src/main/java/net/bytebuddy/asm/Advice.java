@@ -4947,6 +4947,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
                     @Override
                     public void translateFrame(MethodVisitor methodVisitor, int type, int localVariableLength, Object[] localVariable, int stackSize, Object[] stack) {
+                        // TODO: Needs to be adjusted for call site. (Enter, instrumented, exit)
                         switch (type) {
                             case Opcodes.F_SAME:
                             case Opcodes.F_SAME1:
