@@ -4724,8 +4724,8 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                               List<? extends TypeDescription> exitTypes,
                                               boolean expandFrames) {
                     super(instrumentedType, instrumentedMethod, enterTypes, exitTypes, expandFrames);
+                    currentFrameDivergence = (instrumentedMethod.isStatic() ? 0 : 1) + instrumentedMethod.getParameters().size();
                 }
-
 
                 @Override
                 public void injectStartFrame(MethodVisitor methodVisitor) { // TODO: Simplify!
