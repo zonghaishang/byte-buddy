@@ -6,12 +6,21 @@ import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 
 /**
- * A method visitor
+ * A method visitor that pads two subsequent stack map frames with a no-op instruction.
  */
 public class StackMapFramePaddingMethodVisitor extends MethodVisitor {
 
+    /**
+     * {@code true} if the last visitation was for a stack map frame.
+     */
     private boolean frameLast;
 
+    /**
+     * Creates a method visitor that pads two subsequent stack map frames.
+     *
+     * @param api           The API version.
+     * @param methodVisitor The underlying method visitor.
+     */
     public StackMapFramePaddingMethodVisitor(int api, MethodVisitor methodVisitor) {
         super(api, methodVisitor);
     }
