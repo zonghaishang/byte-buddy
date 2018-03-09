@@ -4719,7 +4719,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             /**
              * A default stack map frame handler that retains the original local variable without adjustments.
              */
-            protected static class WithTrivialTranslation extends Default { // TODO: Set original arguments to TOP to avoid breakage (needs test).
+            protected static class WithTrivialTranslation extends Default {
 
                 /**
                  * Creates a default stack map frame handler for advice that retains the original local variable array without adjustments.

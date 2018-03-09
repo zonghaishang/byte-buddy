@@ -18,12 +18,11 @@ import org.objectweb.asm.Opcodes;
 
 import static net.bytebuddy.matcher.ElementMatchers.named;
 import static org.hamcrest.CoreMatchers.is;
-import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
-public class AdviceInconsistentFrameTest {
+public class AdviceInconsistentStackMapFrameTest {
 
-    private static final String FOO = "foo", BAR  = "bar";
+    private static final String FOO = "foo", BAR = "bar";
 
     @Rule
     public MethodRule javaVersionRule = new JavaVersionRule();
@@ -99,6 +98,26 @@ public class AdviceInconsistentFrameTest {
 
     @Test
     @JavaVersionRule.Enforce(7)
+    public void testFrameInconsistentInstructionFrameRetention() throws Exception {
+        Class<?> type = new ByteBuddy()
+                .subclass(Object.class)
+                .defineMethod(FOO, String.class, Visibility.PUBLIC)
+                .intercept(new InconsistentInstructionMethod())
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
+                .getLoaded();
+        assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
+        Class<?> redefined = new ByteBuddy()
+                .redefine(type)
+                .visit(Advice.to(TrivialAdviceFrameRetention.class).on(named(FOO)))
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
+    }
+
+    @Test
+    @JavaVersionRule.Enforce(7)
     public void testFrameTooShortFrameRetention() throws Exception {
         Class<?> type = new ByteBuddy()
                 .subclass(Object.class)
@@ -108,10 +127,13 @@ public class AdviceInconsistentFrameTest {
                 .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
                 .getLoaded();
         assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
-        assertThat(new ByteBuddy()
+        Class<?> redefined = new ByteBuddy()
                 .redefine(type)
                 .visit(Advice.to(TrivialAdviceFrameRetention.class).on(named(FOO)))
-                .make(), notNullValue());
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
     }
 
     @Test
@@ -125,10 +147,13 @@ public class AdviceInconsistentFrameTest {
                 .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
                 .getLoaded();
         assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
-        assertThat(new ByteBuddy()
+        Class<?> redefined = new ByteBuddy()
                 .redefine(type)
                 .visit(Advice.to(TrivialAdviceFrameRetention.class).on(named(FOO)))
-                .make(), notNullValue());
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
     }
 
     @Test
@@ -142,10 +167,13 @@ public class AdviceInconsistentFrameTest {
                 .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
                 .getLoaded();
         assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
-        assertThat(new ByteBuddy()
+        Class<?> redefined = new ByteBuddy()
                 .redefine(type)
                 .visit(Advice.to(TrivialAdviceFrameRetention.class).on(named(FOO)))
-                .make(), notNullValue());
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
     }
 
     @Test
@@ -160,10 +188,33 @@ public class AdviceInconsistentFrameTest {
                 .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
                 .getLoaded();
         assertThat(type.getDeclaredMethod(FOO, Void.class).invoke(null, (Object) null), is((Object) BAR));
-        assertThat(new ByteBuddy()
+        Class<?> redefined = new ByteBuddy()
                 .redefine(type)
                 .visit(Advice.to(TrivialAdviceFrameRetention.class).on(named(FOO)))
-                .make(), notNullValue());
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO, Void.class).invoke(null, (Object) null), is((Object) BAR));
+    }
+
+    @Test
+    @JavaVersionRule.Enforce(7)
+    public void testFrameInconsistentInstructionBackupArgument() throws Exception {
+        Class<?> type = new ByteBuddy()
+                .subclass(Object.class)
+                .defineMethod(FOO, String.class, Visibility.PUBLIC)
+                .intercept(new InconsistentInstructionMethod())
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
+                .getLoaded();
+        assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
+        Class<?> redefined = new ByteBuddy()
+                .redefine(type)
+                .visit(Advice.to(TrivialAdviceBackupArgument.class).on(named(FOO)))
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
     }
 
     @Test
@@ -177,10 +228,13 @@ public class AdviceInconsistentFrameTest {
                 .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
                 .getLoaded();
         assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
-        assertThat(new ByteBuddy()
+        Class<?> redefined = new ByteBuddy()
                 .redefine(type)
                 .visit(Advice.to(TrivialAdviceBackupArgument.class).on(named(FOO)))
-                .make(), notNullValue());
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
     }
 
     @Test
@@ -194,10 +248,13 @@ public class AdviceInconsistentFrameTest {
                 .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
                 .getLoaded();
         assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
-        assertThat(new ByteBuddy()
+        Class<?> redefined = new ByteBuddy()
                 .redefine(type)
                 .visit(Advice.to(TrivialAdviceBackupArgument.class).on(named(FOO)))
-                .make(), notNullValue());
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
     }
 
     @Test
@@ -211,10 +268,13 @@ public class AdviceInconsistentFrameTest {
                 .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
                 .getLoaded();
         assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
-        assertThat(new ByteBuddy()
+        Class<?> redefined = new ByteBuddy()
                 .redefine(type)
                 .visit(Advice.to(TrivialAdviceBackupArgument.class).on(named(FOO)))
-                .make(), notNullValue());
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
     }
 
     @Test
@@ -229,10 +289,13 @@ public class AdviceInconsistentFrameTest {
                 .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
                 .getLoaded();
         assertThat(type.getDeclaredMethod(FOO, Void.class).invoke(null, (Object) null), is((Object) BAR));
-        assertThat(new ByteBuddy()
+        Class<?> redefined = new ByteBuddy()
                 .redefine(type)
                 .visit(Advice.to(TrivialAdviceBackupArgument.class).on(named(FOO)))
-                .make(), notNullValue());
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
+                .getLoaded();
+        assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
     }
 
     @SuppressWarnings("all")
@@ -260,6 +323,28 @@ public class AdviceInconsistentFrameTest {
         @Advice.OnMethodExit(backupArguments = true)
         private static boolean advice() {
             return false; // To avoid trivial remapping
+        }
+    }
+
+    private static class InconsistentInstructionMethod implements Implementation, ByteCodeAppender {
+
+        @Override
+        public ByteCodeAppender appender(Target implementationTarget) {
+            return this;
+        }
+
+        @Override
+        public InstrumentedType prepare(InstrumentedType instrumentedType) {
+            return instrumentedType;
+        }
+
+        @Override
+        public Size apply(MethodVisitor methodVisitor, Context implementationContext, MethodDescription instrumentedMethod) {
+            methodVisitor.visitLdcInsn(BAR);
+            methodVisitor.visitVarInsn(Opcodes.ASTORE, 0);
+            methodVisitor.visitVarInsn(Opcodes.ALOAD, 0);
+            methodVisitor.visitInsn(Opcodes.ARETURN);
+            return new Size(1, 2);
         }
     }
 
@@ -319,7 +404,7 @@ public class AdviceInconsistentFrameTest {
 
         @Override
         public Size apply(MethodVisitor methodVisitor, Context implementationContext, MethodDescription instrumentedMethod) {
-            methodVisitor.visitFrame(Opcodes.F_FULL, 1, new Object[] {TypeDescription.OBJECT.getInternalName()}, 0, new Object[0]);
+            methodVisitor.visitFrame(Opcodes.F_FULL, 1, new Object[]{TypeDescription.OBJECT.getInternalName()}, 0, new Object[0]);
             methodVisitor.visitLdcInsn(BAR);
             methodVisitor.visitInsn(Opcodes.ARETURN);
             return new Size(1, 2);
@@ -340,7 +425,7 @@ public class AdviceInconsistentFrameTest {
 
         @Override
         public Size apply(MethodVisitor methodVisitor, Context implementationContext, MethodDescription instrumentedMethod) {
-            methodVisitor.visitFrame(Opcodes.F_FULL, 1, new Object[] {TypeDescription.OBJECT.getInternalName()}, 0, new Object[0]);
+            methodVisitor.visitFrame(Opcodes.F_FULL, 1, new Object[]{TypeDescription.OBJECT.getInternalName()}, 0, new Object[0]);
             methodVisitor.visitLdcInsn(BAR);
             methodVisitor.visitInsn(Opcodes.ARETURN);
             return new Size(1, 2);
