@@ -4347,6 +4347,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             protected static ForInstrumentedMethod of(TypeDescription instrumentedType,
                                                       MethodDescription instrumentedMethod,
                                                       boolean copyArguments,
+                                                      boolean noExit,
                                                       List<? extends TypeDescription> enterTypes,
                                                       List<? extends TypeDescription> exitTypes,
                                                       ClassFileVersion classFileVersion,
@@ -4356,8 +4357,8 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                     return NoOp.INSTANCE;
                 } else if (copyArguments) {
                     return new WithCopiedArguments(instrumentedType, instrumentedMethod, enterTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
-//                } else if (enterTypes.isEmpty()) {
-//                    return new WithTrivialTranslation(instrumentedType, instrumentedMethod, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
+                } else if (noExit && enterTypes.isEmpty()) {
+                    return new WithTrivialTranslation(instrumentedType, instrumentedMethod, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
                 } else {
                     return new WithConsistentTranslation(instrumentedType, instrumentedMethod, enterTypes, exitTypes, (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
                 }
@@ -4672,7 +4673,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                                  MethodDescription instrumentedMethod,
                                                  List<? extends TypeDescription> exitTypes,
                                                  boolean expandFrames) {
-                    super(instrumentedType, instrumentedMethod, Collections.emptyList(), exitTypes, expandFrames);
+                    super(instrumentedType, instrumentedMethod, Collections.<TypeDescription>emptyList(), exitTypes, expandFrames);
                 }
 
                 @Override
@@ -4790,8 +4791,8 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                         case Opcodes.F_FULL:
                         case Opcodes.F_NEW:
                             Object[] translated = new Object[localVariableLength
-                                    + (instrumentedMethod.isStatic() ? 0 : 2)
-                                    + instrumentedMethod.getParameters().size() * 2
+                                    + (instrumentedMethod.isStatic() ? 0 : 1)
+                                    + instrumentedMethod.getParameters().size()
                                     + enterTypes.size()];
                             int index = 0;
                             if (instrumentedMethod.isConstructor()) {
@@ -4811,12 +4812,15 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                             for (TypeDescription typeDescription : instrumentedMethod.getParameters().asTypeList().asErasures()) {
                                 translated[index++] = toFrame(typeDescription);
                             }
+                            for (TypeDescription typeDescription : enterTypes) {
+                                translated[index++] = toFrame(typeDescription);
+                            }
                             System.arraycopy(localVariable,
                                     0,
                                     translated,
                                     index,
                                     localVariableLength);
-                            currentFrameDivergence = localVariableLength; // TODO: Correct?
+                            currentFrameDivergence = localVariableLength;
                             localVariableLength = translated.length;
                             localVariable = translated;
                             break;
@@ -7841,6 +7845,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             stackMapFrameHandler = StackMapFrameHandler.Default.of(instrumentedType,
                     instrumentedMethod,
                     argumentHandler.isCopyArguments(),
+                    !methodExit.isAlive(),
                     enterTypes,
                     exitTypes,
                     implementationContext.getClassFileVersion(),
