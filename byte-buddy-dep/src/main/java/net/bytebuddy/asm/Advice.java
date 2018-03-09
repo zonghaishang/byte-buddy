@@ -493,9 +493,9 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                    Implementation.Context implementationContext,
                                    int writerFlags,
                                    int readerFlags) {
-        methodVisitor = new StackMapFramePaddingMethodVisitor(Opcodes.ASM6, methodEnter.isPrependLineNumber()
+        methodVisitor = methodEnter.isPrependLineNumber()
                 ? new LineNumberPrependingMethodVisitor(methodVisitor)
-                : methodVisitor);
+                : methodVisitor;
         if (!methodExit.isAlive()) {
             return new AdviceVisitor.WithoutExitAdvice(methodVisitor,
                     implementationContext,
@@ -8128,7 +8128,9 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                         Dispatcher.Resolved.ForMethodEnter methodEnter,
                                         int writerFlags,
                                         int readerFlags) {
-                super(methodVisitor,
+                super((writerFlags & ClassWriter.COMPUTE_FRAMES) == 0
+                                ? new StackMapFramePaddingMethodVisitor(Opcodes.ASM6, methodVisitor)
+                                : methodVisitor,
                         implementationContext,
                         assigner,
                         exceptionHandler,
@@ -8224,7 +8226,9 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                      List<? extends TypeDescription> exitTypes,
                                      int writerFlags,
                                      int readerFlags) {
-                super(new StackAwareMethodVisitor(methodVisitor, instrumentedMethod),
+                super(new StackAwareMethodVisitor((writerFlags & ClassWriter.COMPUTE_FRAMES) == 0
+                                ? new StackMapFramePaddingMethodVisitor(Opcodes.ASM6, methodVisitor)
+                                : methodVisitor, instrumentedMethod),
                         implementationContext,
                         assigner,
                         exceptionHandler,
