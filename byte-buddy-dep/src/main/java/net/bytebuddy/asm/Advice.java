@@ -30,9 +30,9 @@ import net.bytebuddy.pool.TypePool;
 import net.bytebuddy.utility.CompoundList;
 import net.bytebuddy.utility.JavaType;
 import net.bytebuddy.utility.visitor.ExceptionTableSensitiveMethodVisitor;
-import net.bytebuddy.utility.visitor.StackMapFramePaddingMethodVisitor;
 import net.bytebuddy.utility.visitor.LineNumberPrependingMethodVisitor;
 import net.bytebuddy.utility.visitor.StackAwareMethodVisitor;
+import net.bytebuddy.utility.visitor.StackMapFramePaddingMethodVisitor;
 import org.objectweb.asm.*;
 
 import java.io.IOException;
@@ -4776,7 +4776,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                     for (TypeDescription.Generic typeDescription : instrumentedMethod.getParameters().asTypeList()) {
                         localVariable[index++] = Opcodes.TOP;
                         if (typeDescription.getStackSize() == StackSize.DOUBLE) {
-                            localVariable[index++] = Opcodes.TOP; // TODO: Does this really work? Requires test!
+                            localVariable[index++] = Opcodes.TOP;
                         }
                     }
                     for (TypeDescription typeDescription : typesInArray) {
@@ -7975,8 +7975,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
         /**
          * Creates a new advice visitor.
          *
-         * @param methodVisitor         The actual method visitor that is underlying this method visitor to which all instructions are written.
-         * @param delegate              A delegate to which all instructions of the original method are written to. Must delegate to {@code methodVisitor}.
+         * @param methodVisitor         The method visitor to write to.
          * @param implementationContext The implementation context to use.
          * @param assigner              The assigner to use.
          * @param exceptionHandler      The stack manipulation to apply within a suppression handler.
@@ -7989,7 +7988,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
          * @param readerFlags           The ASM reader flags that were set.
          */
         protected AdviceVisitor(MethodVisitor methodVisitor,
-                                MethodVisitor delegate,
                                 Context implementationContext,
                                 Assigner assigner,
                                 StackManipulation exceptionHandler,
@@ -8000,7 +7998,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                 List<? extends TypeDescription> exitTypes,
                                 int writerFlags,
                                 int readerFlags) {
-            super(Opcodes.ASM6, delegate);
+            super(Opcodes.ASM6, methodVisitor);
             this.instrumentedMethod = instrumentedMethod;
             List<TypeDescription> enterTypes = methodEnter.getEnterType().represents(void.class)
                     ? Collections.<TypeDescription>emptyList()
@@ -8131,7 +8129,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                         int writerFlags,
                                         int readerFlags) {
                 super(methodVisitor,
-                        methodVisitor,
                         implementationContext,
                         assigner,
                         exceptionHandler,
@@ -8227,8 +8224,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                      List<? extends TypeDescription> exitTypes,
                                      int writerFlags,
                                      int readerFlags) {
-                super(methodVisitor,
-                        new StackAwareMethodVisitor(methodVisitor, instrumentedMethod),
+                super(new StackAwareMethodVisitor(methodVisitor, instrumentedMethod),
                         implementationContext,
                         assigner,
                         exceptionHandler,
