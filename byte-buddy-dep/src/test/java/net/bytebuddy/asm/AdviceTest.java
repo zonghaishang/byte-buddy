@@ -709,19 +709,6 @@ public class AdviceTest {
     }
 
     @Test
-    public void testObsoleteReturnValue() throws Exception {
-        Class<?> type = new ByteBuddy()
-                .redefine(Sample.class)
-                .visit(Advice.to(ObsoleteReturnValueAdvice.class).on(named(FOO)))
-                .make()
-                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
-                .getLoaded();
-        assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) FOO));
-        assertThat(type.getDeclaredField(ENTER).get(null), is((Object) 1));
-        assertThat(type.getDeclaredField(EXIT).get(null), is((Object) 0));
-    }
-
-    @Test
     public void testUnusedReturnValue() throws Exception {
         Class<?> type = new ByteBuddy()
                 .redefine(Sample.class)
@@ -2637,16 +2624,6 @@ public class AdviceTest {
             } catch (Exception ignored) {
                 Sample.exit++;
             }
-        }
-    }
-
-    @SuppressWarnings("unused")
-    public static class ObsoleteReturnValueAdvice {
-
-        @Advice.OnMethodEnter
-        private static int enter() {
-            Sample.enter++;
-            return VALUE;
         }
     }
 

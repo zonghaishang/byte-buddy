@@ -4036,6 +4036,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             @Override
             public MethodSizeHandler.ForAdvice bindEnter(MethodDescription.InDefinedShape adviceMethod) {
                 stackSize = Math.max(stackSize, adviceMethod.getReturnType().getStackSize().getSize());
+                localVariableLength = Math.max(localVariableLength, instrumentedMethod.getStackSize() + adviceMethod.getReturnType().getStackSize().getSize());
                 return new ForAdvice(adviceMethod, Collections.<TypeDescription>emptyList(), enterTypes);
             }
 
