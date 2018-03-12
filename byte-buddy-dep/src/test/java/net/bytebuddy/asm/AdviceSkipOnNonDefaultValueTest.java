@@ -2,6 +2,7 @@ package net.bytebuddy.asm;
 
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -14,6 +15,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 @RunWith(Parameterized.class)
+@Ignore("Disable for now")
 public class AdviceSkipOnNonDefaultValueTest {
 
     private static final String FOO = "foo";
