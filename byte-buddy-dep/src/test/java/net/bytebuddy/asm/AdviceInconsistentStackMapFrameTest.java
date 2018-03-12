@@ -40,7 +40,7 @@ public class AdviceInconsistentStackMapFrameTest {
         assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
         new ByteBuddy()
                 .redefine(type)
-                .visit(Advice.to(TrivialAdvice.class).on(named(FOO)))
+                .visit(Advice.to(TrivialAdviceNotCopied.class).on(named(FOO)))
                 .make();
     }
 
@@ -57,7 +57,7 @@ public class AdviceInconsistentStackMapFrameTest {
         assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
         new ByteBuddy()
                 .redefine(type)
-                .visit(Advice.to(TrivialAdvice.class).on(named(FOO)))
+                .visit(Advice.to(TrivialAdviceNotCopied.class).on(named(FOO)))
                 .make();
     }
 
@@ -74,7 +74,7 @@ public class AdviceInconsistentStackMapFrameTest {
         assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
         new ByteBuddy()
                 .redefine(type)
-                .visit(Advice.to(TrivialAdvice.class).on(named(FOO)))
+                .visit(Advice.to(TrivialAdviceNotCopied.class).on(named(FOO)))
                 .make();
     }
 
@@ -92,7 +92,7 @@ public class AdviceInconsistentStackMapFrameTest {
         assertThat(type.getDeclaredMethod(FOO, Void.class).invoke(null, (Object) null), is((Object) BAR));
         new ByteBuddy()
                 .redefine(type)
-                .visit(Advice.to(TrivialAdvice.class).on(named(FOO)))
+                .visit(Advice.to(TrivialAdviceNotCopied.class).on(named(FOO)))
                 .make();
     }
 
@@ -175,6 +175,75 @@ public class AdviceInconsistentStackMapFrameTest {
                 .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER)
                 .getLoaded();
         assertThat(redefined.getDeclaredMethod(FOO).invoke(redefined.getDeclaredConstructor().newInstance()), is((Object) BAR));
+    }
+
+    @Test
+    @JavaVersionRule.Enforce(7)
+    public void testFrameTooShortEnterContained() throws Exception {
+        Class<?> type = new ByteBuddy()
+                .subclass(Object.class)
+                .defineMethod(FOO, String.class, Visibility.PUBLIC)
+                .intercept(new TooShortMethod())
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
+                .getLoaded();
+        assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
+        new ByteBuddy()
+                .redefine(type)
+                .visit(Advice.to(TrivialAdviceEnterTypeContained.class).on(named(FOO)))
+                .make();
+    }
+
+    @Test
+    @JavaVersionRule.Enforce(7)
+    public void testFrameDropImplicitEnterContained() throws Exception {
+        Class<?> type = new ByteBuddy()
+                .subclass(Object.class)
+                .defineMethod(FOO, String.class, Visibility.PUBLIC)
+                .intercept(new DropImplicitMethod())
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
+                .getLoaded();
+        assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
+        new ByteBuddy()
+                .redefine(type)
+                .visit(Advice.to(TrivialAdviceEnterTypeContained.class).on(named(FOO)))
+                .make();
+    }
+
+    @Test
+    @JavaVersionRule.Enforce(7)
+    public void testFrameInconsistentThisParameterEnterContained() throws Exception {
+        Class<?> type = new ByteBuddy()
+                .subclass(Object.class)
+                .defineMethod(FOO, String.class, Visibility.PUBLIC)
+                .intercept(new InconsistentThisReferenceMethod())
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
+                .getLoaded();
+        assertThat(type.getDeclaredMethod(FOO).invoke(type.getDeclaredConstructor().newInstance()), is((Object) BAR));
+        new ByteBuddy()
+                .redefine(type)
+                .visit(Advice.to(TrivialAdviceEnterTypeContained.class).on(named(FOO)))
+                .make();
+    }
+
+    @Test
+    @JavaVersionRule.Enforce(7)
+    public void testFrameInconsistentParameterEnterContained() throws Exception {
+        Class<?> type = new ByteBuddy()
+                .subclass(Object.class)
+                .defineMethod(FOO, String.class, Visibility.PUBLIC, Ownership.STATIC)
+                .withParameters(Void.class)
+                .intercept(new InconsistentParameterReferenceMethod())
+                .make()
+                .load(ClassLoadingStrategy.BOOTSTRAP_LOADER, ClassLoadingStrategy.Default.WRAPPER_PERSISTENT)
+                .getLoaded();
+        assertThat(type.getDeclaredMethod(FOO, Void.class).invoke(null, (Object) null), is((Object) BAR));
+        new ByteBuddy()
+                .redefine(type)
+                .visit(Advice.to(TrivialAdviceEnterTypeContained.class).on(named(FOO)))
+                .make();
     }
 
     @Test
@@ -340,11 +409,12 @@ public class AdviceInconsistentStackMapFrameTest {
     }
 
     @SuppressWarnings("all")
-    private static class TrivialAdvice {
+    private static class TrivialAdviceNotCopied {
 
         @Advice.OnMethodEnter
-        private static boolean enter() {
-            return false; // To avoid trivial remapping
+        @Advice.OnMethodExit(backupArguments = false)
+        private static void advice() {
+            /* do nothing */
         }
     }
 
@@ -354,6 +424,15 @@ public class AdviceInconsistentStackMapFrameTest {
         @Advice.OnMethodEnter
         private static void enter() {
             /* do nothing */
+        }
+    }
+
+    @SuppressWarnings("all")
+    private static class TrivialAdviceEnterTypeContained {
+
+        @Advice.OnMethodEnter
+        private static boolean enter() {
+            return false; // To avoid trivial remapping
         }
     }
 
