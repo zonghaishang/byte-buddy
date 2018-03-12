@@ -3520,9 +3520,9 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 
                 @Override
                 public int enter() {
-                    if (enterType.represents(void.class)) {
-                        throw new IllegalStateException("Advice method does ");
-                    }
+//                    if (enterType.represents(void.class)) {
+//                        throw new IllegalStateException("Advice method does ");
+//                    }
                     return instrumentedMethod.getStackSize();
                 }
 
@@ -4419,7 +4419,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                             enterTypes,
                             exitTypes,
                             (readerFlags & ClassReader.EXPAND_FRAMES) != 0);
-                } else if (noExit && enterTypes.isEmpty()) { // TODO: Should not depend on enter types if no exit advice is set!
+                } else if (noExit) {
                     return new WithTrivialTranslation(instrumentedType,
                             instrumentedMethod,
                             exitTypes,
@@ -5936,7 +5936,7 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 /* do nothing */
             }
 
-//            @Override
+            //            @Override
 //            public void apply(SkipHandler skipHandler) {
 //                /* do nothing */
 //            }
@@ -5993,15 +5993,15 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
             @Override
             public Dispatcher.Resolved.ForMethodEnter asMethodEnter(List<? extends OffsetMapping.Factory<?>> userFactories,
                                                                     ClassReader classReader,
-                                                                    Unresolved methodEnter) {
-                return new Resolved.ForMethodEnter(adviceMethod, userFactories, classReader);
+                                                                    Unresolved methodExit) {
+                return Resolved.ForMethodEnter.of(adviceMethod, userFactories, classReader, methodExit.isAlive());
             }
 
             @Override
             public Dispatcher.Resolved.ForMethodExit asMethodExit(List<? extends OffsetMapping.Factory<?>> userFactories,
                                                                   ClassReader classReader,
-                                                                  Unresolved methodExit) {
-                return Resolved.ForMethodExit.of(adviceMethod, userFactories, classReader, methodExit.getAdviceType());
+                                                                  Unresolved methodEnter) {
+                return Resolved.ForMethodExit.of(adviceMethod, userFactories, classReader, methodEnter.getAdviceType());
             }
 
             /**
@@ -6392,11 +6392,8 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 /**
                  * A resolved dispatcher for implementing method enter advice.
                  */
-                protected static class ForMethodEnter extends Inlining.Resolved implements Dispatcher.Resolved.ForMethodEnter {
+                protected abstract static class ForMethodEnter extends Inlining.Resolved implements Dispatcher.Resolved.ForMethodEnter {
 
-                    /**
-                     * The skip dispatcher to use.
-                     */
 //                    private final SkipDispatcher skipDispatcher;
 
                     /**
@@ -6433,6 +6430,15 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                         prependLineNumber = adviceMethod.getDeclaredAnnotations().ofType(OnMethodEnter.class).getValue(PREPEND_LINE_NUMBER).resolve(Boolean.class);
                     }
 
+                    protected static Resolved.ForMethodEnter of(MethodDescription.InDefinedShape adviceMethod,
+                                                                List<? extends OffsetMapping.Factory<?>> userFactories,
+                                                                ClassReader classReader,
+                                                                boolean methodExit) {
+                        return methodExit
+                                ? new WithRetainedEnterType(adviceMethod, userFactories, classReader)
+                                : new WithContainedEnterType(adviceMethod, userFactories, classReader);
+                    }
+
                     @Override
                     public Bound.ForMethodEnter bind(TypeDescription instrumentedType,
                                                      MethodDescription instrumentedMethod,
@@ -6455,11 +6461,6 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                                 classReader
 //                                skipDispatcher
                         );
-                    }
-
-                    @Override
-                    public TypeDefinition getEnterType() {
-                        return adviceMethod.getReturnType();
                     }
 
                     @Override
@@ -6511,6 +6512,36 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
 //                        result = 31 * result + skipDispatcher.hashCode();
                         result = 31 * result + (prependLineNumber ? 1 : 0);
                         return result;
+                    }
+
+                    protected static class WithRetainedEnterType extends Inlining.Resolved.ForMethodEnter {
+
+                        @SuppressWarnings("unchecked") // In absence of @SafeVarargs for Java 6
+                        protected WithRetainedEnterType(MethodDescription.InDefinedShape adviceMethod,
+                                                        List<? extends OffsetMapping.Factory<?>> userFactories,
+                                                        ClassReader classReader) {
+                            super(adviceMethod, userFactories, classReader);
+                        }
+
+                        @Override
+                        public TypeDefinition getEnterType() {
+                            return adviceMethod.getReturnType();
+                        }
+                    }
+
+                    protected static class WithContainedEnterType extends Inlining.Resolved.ForMethodEnter {
+
+                        @SuppressWarnings("unchecked") // In absence of @SafeVarargs for Java 6
+                        protected WithContainedEnterType(MethodDescription.InDefinedShape adviceMethod,
+                                                         List<? extends OffsetMapping.Factory<?>> userFactories,
+                                                         ClassReader classReader) {
+                            super(adviceMethod, userFactories, classReader);
+                        }
+
+                        @Override
+                        public TypeDefinition getEnterType() {
+                            return TypeDescription.VOID;
+                        }
                     }
 
                     /**
