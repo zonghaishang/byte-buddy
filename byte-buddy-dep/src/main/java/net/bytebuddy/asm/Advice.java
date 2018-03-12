@@ -5065,13 +5065,13 @@ public class Advice implements AsmVisitorWrapper.ForDeclaredMethods.MethodVisito
                 @Override
                 public void injectReturnFrame(MethodVisitor methodVisitor) {
                     if (!expandFrames && currentFrameDivergence == 0) {
-                        if (endTypes.isEmpty() || adviceMethod.getReturnType().represents(void.class)) {
+                        if (adviceMethod.getReturnType().represents(void.class)) {
                             methodVisitor.visitFrame(Opcodes.F_SAME, EMPTY.length, EMPTY, EMPTY.length, EMPTY);
                         } else {
                             methodVisitor.visitFrame(Opcodes.F_SAME1, EMPTY.length, EMPTY, 1, new Object[]{toFrame(adviceMethod.getReturnType().asErasure())});
                         }
                     } else {
-                        injectFullFrame(methodVisitor, startTypes, endTypes.isEmpty() || adviceMethod.getReturnType().represents(void.class)
+                        injectFullFrame(methodVisitor, startTypes, adviceMethod.getReturnType().represents(void.class)
                                 ? Collections.<TypeDescription>emptyList()
                                 : Collections.singletonList(adviceMethod.getReturnType().asErasure()));
                     }
