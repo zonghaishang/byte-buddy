@@ -1380,6 +1380,7 @@ public class AdviceTest {
     }
 
     @Test
+    @Ignore
     public void testInstanceOfNoSkip() throws Exception {
         Class<?> type = new ByteBuddy()
                 .redefine(InstanceOfNoSkip.class)
